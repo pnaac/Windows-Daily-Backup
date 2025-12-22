@@ -1,0 +1,39 @@
+{
+  "config": {
+    "client_name": "Kriplani Builders",
+    "schedule_time": "21:00",
+    "source_path": "D:\\TallyData",
+    "remote_folder": "Kriplani_Backups",
+    "shutdown_after_backup": false,
+    "email_recipients": "admin@kriplani.com",
+    "retention_policy": {
+      "keep_hourly_hours": 72,
+      "keep_daily_days": 60
+    }
+  },
+  "control": {
+    "trigger_now": false,
+    "force_stop": false
+  },
+  "state": {
+    "status": "Idle",
+    "detailed_message": "System ready.",
+    "agent_heartbeat_epoch": 0,
+    "is_backup_in_progress": false
+  },
+  "stats": {
+    "last_run_date": "Never",
+    "last_duration_str": "0m 0s",
+    "last_data_transferred_str": "0 MB",
+    "total_cloud_storage_used_str": "Checking..."
+  },
+  "history": {
+    "init_log": {
+      "timestamp": "2025-01-01 00:00:00",
+      "status": "Success",
+      "duration": "0s",
+      "transferred": "0 B",
+      "type": "System Init"
+    }
+  }
+}

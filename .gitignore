@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Node/Svelte
+node_modules/
+.DS_Store
+dist/
+.svelte-kit/
+
+# Firebase / Secrets (VERY IMPORTANT)
+serviceAccountKey.json
+.firebase/
