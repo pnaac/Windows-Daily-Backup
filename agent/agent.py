@@ -476,7 +476,15 @@ def main():
 
     while True:
         try:
-            # 1. Heartbeat
+            # 1. Existence Check (Kill Switch)
+            # If the system node has been deleted by Admin, the agent should decommission itself.
+            system_check = db.reference(f'systems/{AGENT_ID}').get()
+            if system_check is None:
+                print(f"⛔ System ID {AGENT_ID} not found in registry (Deleted by Admin).")
+                print("   Agent is decommissioning...")
+                sys.exit(0)
+
+            # 2. Heartbeat (Only if system exists)
             db.reference(f'systems/{AGENT_ID}/heartbeat').set(int(time.time()))
 
             # 2. Fetch Configuration
