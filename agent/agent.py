@@ -487,7 +487,7 @@ def main():
             manual_trigger_job_id = db.reference(f'control/{AGENT_ID}/trigger_now').get()
             if manual_trigger_job_id:
                 # Clear trigger immediately to acknowledge
-                db.reference(f'control/{AGENT_ID}/trigger_now').set(None)
+                db.reference(f'control/{AGENT_ID}/trigger_now').delete()
                 if manual_trigger_job_id in jobs:
                     print(f"⚡ Manual Trigger received for {manual_trigger_job_id}")
                     perform_backup(manual_trigger_job_id, jobs[manual_trigger_job_id], global_config)
