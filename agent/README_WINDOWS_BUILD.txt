@@ -13,7 +13,10 @@
     -   Extract `rclone.exe` from the zip.
     -   Place `rclone.exe` in this `agent` folder (next to `agent.py`).
 
-4.  **Build**:
+4.  **Install Dependencies**:
+    -   Run: `pip install -r requirements.txt`
+
+5.  **Build**:
     -   Run the build script:
         python build_agent.py
 
