@@ -27,19 +27,23 @@ RCLONE_URL = f"https://downloads.rclone.org/{RCLONE_VERSION}/rclone-{RCLONE_VERS
 AGENT_ID = None
 RCLONE_BIN = "rclone" # Default to PATH, updated by ensure_rclone
 
-# --- RESOURCE HANDLING ---
-def get_resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
+# 2. Identity Persistence (Crucial for preventing Ghost Agents)
+# store in %APPDATA%/KriplaniBackup on Windows, or ~/.kriplanibackup on others
+if platform.system() == "Windows":
+    config_dir = os.path.join(os.getenv('APPDATA'), 'KriplaniBackup')
+else:
+    config_dir = os.path.join(os.path.expanduser('~'), '.kriplanibackup')
+
+if not os.path.exists(config_dir):
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+        os.makedirs(config_dir)
+    except:
+        config_dir = os.getcwd() # Fallback
 
-    return os.path.join(base_path, relative_path)
+IDENTITY_FILE = os.path.join(config_dir, "agent_identity.json")
 
-KEY_PATH = get_resource_path("serviceAccountKey.json")
-IDENTITY_FILE = "agent_identity.json" 
+# --- RESOURCE HANDLING ---
+def get_resource_path(relative_path): 
 
 # --- DEPENDENCY MANAGEMENT ---
 def ensure_rclone():
@@ -177,11 +181,22 @@ def install_startup():
 
 def register_agent():
     """Updates the systems/{uuid}/meta node with host info."""
+    
+    # Improve IP detection
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # doesn't even have to be reachable
+        s.connect(('8.8.8.8', 1))
+        ip_address = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip_address = socket.gethostbyname(socket.gethostname())
+
     meta = {
         "hostname": socket.gethostname(),
         "os": f"{platform.system()} {platform.release()}",
-        "version": "2.1.0 (Auto-Deploy)",
-        "ip": socket.gethostbyname(socket.gethostname()),
+        "version": "2.2.0 (Stable Identity)",
+        "ip": ip_address,
         "last_boot": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     db.reference(f'systems/{AGENT_ID}/meta').update(meta)
