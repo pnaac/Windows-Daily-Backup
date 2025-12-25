@@ -29,7 +29,7 @@ def build():
         "pyinstaller",
         "--noconfirm",
         "--onefile",
-        "--console", 
+        "--noconsole", 
         "--name", "KriplaniBackupAgent_Installer",
         f"--add-data", f"serviceAccountKey.json{separator}.",
         f"--add-data", f"rclone.exe{separator}.",
