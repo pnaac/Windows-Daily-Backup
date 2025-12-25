@@ -383,11 +383,22 @@
                       class="text-sm font-semibold {state.status === 'Success'
                         ? 'text-success'
                         : state.status === 'Error'
-                          ? 'text-error'
+                          ? 'text-error cursor-help'
                           : 'text-base-content/40'}"
+                      title={state.status === "Error"
+                        ? state.detailed_message
+                        : ""}
                     >
                       {state.status || "Pending"}
                     </span>
+                    {#if state.status === "Error"}
+                      <div
+                        class="text-[10px] text-error mt-0.5 max-w-[150px] truncate"
+                        title={state.detailed_message}
+                      >
+                        {state.detailed_message}
+                      </div>
+                    {/if}
                   </div>
                   <span class="text-[10px] text-base-content/40 mt-1"
                     >{state.last_run || "Never"}</span
