@@ -309,6 +309,25 @@
         Refresh
       </button>
 
+      <button
+        class="btn btn-sm btn-primary gap-2 text-white shadow-md shadow-primary/20"
+        on:click={() => openJobEditor(null)}
+      >
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          ><path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 4v16m8-8H4"
+          ></path></svg
+        >
+        New Job
+      </button>
+
       {#if currentUser?.email
         ?.trim()
         .toLowerCase() === "admin@kriplanibuilders.com"}
@@ -329,24 +348,6 @@
             ></path></svg
           >
           Delete System
-        </button>
-        <button
-          class="btn btn-sm btn-primary gap-2 text-white shadow-md shadow-primary/20"
-          on:click={() => openJobEditor(null)}
-        >
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            ><path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
-            ></path></svg
-          >
-          New Job
         </button>
       {/if}
     </div>
@@ -369,9 +370,7 @@
             <th>Destination ID</th>
             <th>Data Moved</th>
             <th>Last Run Status</th>
-            {#if currentUser?.email?.toLowerCase() === "admin@kriplanibuilders.com"}
-              <th class="text-right">Actions</th>
-            {/if}
+            <th class="text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -444,37 +443,37 @@
                   >
                 </div>
               </td>
-              {#if currentUser?.email
-                ?.trim()
-                .toLowerCase() === "admin@kriplanibuilders.com"}
-                <td class="text-right">
-                  <div class="join">
-                    <button
-                      class="btn btn-sm btn-ghost join-item tooltip"
-                      data-tip="Run Now"
-                      on:click={() => triggerJob(jobId)}
-                      disabled={state.status === "Running"}
+              <td class="text-right">
+                <div class="join">
+                  <button
+                    class="btn btn-sm btn-ghost join-item tooltip"
+                    data-tip="Run Now"
+                    on:click={() => triggerJob(jobId)}
+                    disabled={state.status === "Running"}
+                  >
+                    {@html Icons.power}
+                  </button>
+                  <button
+                    class="btn btn-sm btn-ghost join-item tooltip"
+                    data-tip="Edit"
+                    on:click={() => openJobEditor(jobId)}
+                  >
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      ><path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                      ></path></svg
                     >
-                      {@html Icons.power}
-                    </button>
-                    <button
-                      class="btn btn-sm btn-ghost join-item tooltip"
-                      data-tip="Edit"
-                      on:click={() => openJobEditor(jobId)}
-                    >
-                      <svg
-                        class="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        ><path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                        ></path></svg
-                      >
-                    </button>
+                  </button>
+                  {#if currentUser?.email
+                    ?.trim()
+                    .toLowerCase() === "admin@kriplanibuilders.com"}
                     <button
                       class="btn btn-sm btn-ghost join-item text-error tooltip"
                       data-tip="Delete"
@@ -493,9 +492,9 @@
                         ></path></svg
                       >
                     </button>
-                  </div>
-                </td>
-              {/if}
+                  {/if}
+                </div>
+              </td>
             </tr>
           {/each}
 
