@@ -196,6 +196,7 @@ def parse_rclone_size(bytes_int):
         bytes_int /= 1024
     return f"{bytes_int:.2f} PB"
 
+
 def send_email_alert(job_name, status, details_html, recipients_str, smtp_settings):
     """
     Sends email using provided SMTP settings. 
@@ -243,50 +244,86 @@ def send_email_alert(job_name, status, details_html, recipients_str, smtp_settin
     except Exception as e:
         print(f"❌ Email Failed: {e}")
 
-def enforce_retention(start_remote_path, retention_days):
-    if not retention_days: return
+
+
+
+
+# --- CONFIGURATION ---
+def configure_rclone():
+    """Confirms 'gdrive' remote exists in rclone.conf, creates it if missing."""
     try:
-        keep_days = int(retention_days)
-        print(f"🧹 Retention Check: {start_remote_path} (Keep {keep_days} days)")
-        
-        # List directories in the specific job folder
-        result = subprocess.run([RCLONE_BIN, "lsd", f"{RCLONE_REMOTE}:{start_remote_path}"], capture_output=True, text=True)
-        
-        if result.returncode != 0: return
+        # Check if remote exists
+        result = subprocess.run([RCLONE_BIN, "listremotes"], capture_output=True, text=True)
+        if "gdrive:" in result.stdout:
+            print("✅ Rclone remote 'gdrive' found.")
+            return
 
-        now = datetime.datetime.now()
-        for line in result.stdout.splitlines():
-            parts = line.strip().split()
-            if not parts: continue
-            folder_name = parts[-1]
-            if folder_name == "Current_Mirror": continue
-
-            match = re.search(r"Backup_(\d{4}-\d{2}-\d{2})", folder_name)
-            if match:
-                try:
-                    folder_date = datetime.datetime.strptime(match.group(1), "%Y-%m-%d")
-                    age_days = (now - folder_date).days
-                    if age_days > keep_days:
-                        print(f"   🗑️ PURGING: {folder_name} ({age_days} days old)...")
-                        subprocess.run([RCLONE_BIN, "purge", f"{RCLONE_REMOTE}:{start_remote_path}/{folder_name}"], check=True)
-                except ValueError:
-                    continue
+        print("⚙️ Configuring 'gdrive' remote with Service Account...")
+        subprocess.run([
+            RCLONE_BIN, "config", "create", "gdrive", "drive", 
+            "scope", "drive", 
+            "service_account_file", KEY_PATH
+        ], check=True)
+        print("✅ Rclone remote 'gdrive' created.")
     except Exception as e:
-        print(f"⚠️ Retention Error: {e}")
+        print(f"⚠️ Failed to configure rclone: {e}")
+
+# --- SCHEDULING LOGIC ---
+def check_schedule(schedule_config):
+    """
+    Returns True if the job should run NOW.
+    Supports:
+    - Daily: { "type": "daily", "time": "HH:MM" }
+    - Monthly: { "type": "monthly", "day": 1, "time": "HH:MM" }
+    """
+    now = datetime.datetime.now()
+    current_time = now.strftime("%H:%M")
+    current_day = now.day
+
+    sched_type = schedule_config.get('type', 'daily')
+    sched_time = schedule_config.get('time', '00:00')
+
+    if sched_type == 'daily':
+        return current_time == sched_time
+    
+    if sched_type == 'monthly':
+        sched_day = int(schedule_config.get('day', 1))
+        return current_day == sched_day and current_time == sched_time
+    
+    return False
 
 def perform_backup(job_id, job_config, global_config):
     job_name = job_config.get('name', 'Unknown Job')
     source_path = job_config.get('source_path')
-    remote_root = job_config.get('remote_folder', 'Backups')
+    
+    # Handle Remote Configuration (Folder Path vs Folder ID)
+    raw_remote = job_config.get('remote_folder', 'Backups')
+    
+    # If remote looks like a Google Drive ID (alphanumeric, long, no spaces/slashes usually)
+    # 1. Folder IDs are usually ~33 chars.
+    # 2. Shared Drive Root IDs are usually ~19 chars (starts with 0A).
+    # We use backend connection string syntax: gdrive,root_folder_id=XXX:
+    if len(raw_remote) > 15 and "/" not in raw_remote and " " not in raw_remote:
+        print(f"🔗 Detected Folder ID: {raw_remote}")
+        base_remote = f"gdrive,root_folder_id={raw_remote}:"
+        remote_root = "" # Root is determined by ID
+    else:
+        base_remote = "gdrive:"
+        remote_root = raw_remote
+
     destination_subfolder = job_config.get('destination_subfolder', job_name.replace(" ", "_"))
     
     # Construct paths
-    full_remote_path = f"{remote_root}/{destination_subfolder}"
+    # If base_remote has ID, we append path directly. 
+    # e.g. gdrive,root_folder_id=XXX:/Marketing/Current_Mirror
+    full_remote_path = f"{remote_root}/{destination_subfolder}".strip("/") 
+    
     mirror_path = f"{full_remote_path}/Current_Mirror"
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     backup_path = f"{full_remote_path}/Backup_{timestamp}"
 
     print(f"\n🚀 Starting Job: {job_name} ({source_path})")
+    print(f"   Destination: {base_remote}{backup_path}")
 
     # Update Job State -> Running
     state_ref = db.reference(f'runtime_state/{AGENT_ID}/job_states/{job_id}')
@@ -300,8 +337,11 @@ def perform_backup(job_id, job_config, global_config):
     bytes_transferred = 0
     try:
         # 1. Sync
+        # We assume the user wants 'Snapshot' style history.
+        # Strategy: Sync to Mirror (Incremental), then Copy Mirror to Backup_Timestamp (Server-Side)
+        
         process = subprocess.Popen(
-            [RCLONE_BIN, "sync", source_path, f"{RCLONE_REMOTE}:{mirror_path}",
+            [RCLONE_BIN, "sync", source_path, f"{base_remote}{mirror_path}",
              "--transfers", "8", "--use-json-log", "--stats", "1s"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -315,20 +355,22 @@ def perform_backup(job_id, job_config, global_config):
                     log_entry = json.loads(line)
                     if 'stats' in log_entry: 
                         bytes_transferred = log_entry['stats'].get('bytes', 0)
-                        # Optional: Update realtime stats to DB? Might be too spammy.
                 except:
                     pass
         
         if process.returncode != 0: raise Exception("Rclone Sync Failed")
 
         # 2. Snapshot (Copy)
-        state_ref.update({"detailed_message": "Creating Snapshot..."})
-        subprocess.run([RCLONE_BIN, "copy", f"{RCLONE_REMOTE}:{mirror_path}", f"{RCLONE_REMOTE}:{backup_path}",
+        state_ref.update({"detailed_message": f"Creating Snapshot: Backup_{timestamp}..."})
+        subprocess.run([RCLONE_BIN, "copy", f"{base_remote}{mirror_path}", f"{base_remote}{backup_path}",
                         "--server-side-across-configs"], check=True)
 
         # 3. Retention
         retention = job_config.get('retention', {}).get('days', 60)
-        enforce_retention(full_remote_path, retention)
+        # Note: Retention check needs to run differently if using dynamic connection string?
+        # Actually, rclone lsd supports it.
+        # We pass the full path relative to the base connection
+        enforce_retention(base_remote, full_remote_path, retention)
 
         # Success
         size_str = parse_rclone_size(bytes_transferred)
@@ -336,7 +378,7 @@ def perform_backup(job_id, job_config, global_config):
         
         state_ref.update({
             "status": "Success", 
-            "detailed_message": f"Done. {size_str} uploaded.",
+            "detailed_message": f"Done. {size_str} uploaded to Backup_{timestamp}",
             "last_run": success_time,
             "last_size": size_str
         })
@@ -366,39 +408,48 @@ def perform_backup(job_id, job_config, global_config):
         smtp_settings = global_config.get('smtp', {})
         send_email_alert(job_name, "FAILURE", f"<tr><td>Error:</td><td>{str(e)}</td></tr>", email_recipients, smtp_settings)
 
+def enforce_retention(base_remote, start_remote_path, retention_days):
+    if not retention_days: return
+    try:
+        keep_days = int(retention_days)
+        print(f"🧹 Retention Check: {start_remote_path} (Keep {keep_days} days)")
+        
+        # List directories
+        # Path is {base_remote}{start_remote_path}
+        cmd = [RCLONE_BIN, "lsd", f"{base_remote}{start_remote_path}"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0: return
 
-# --- SCHEDULING LOGIC ---
-def check_schedule(schedule_config):
-    """
-    Returns True if the job should run NOW.
-    Supports:
-    - Daily: { "type": "daily", "time": "HH:MM" }
-    - Monthly: { "type": "monthly", "day": 1, "time": "HH:MM" }
-    """
-    now = datetime.datetime.now()
-    current_time = now.strftime("%H:%M")
-    current_day = now.day
+        now = datetime.datetime.now()
+        for line in result.stdout.splitlines():
+            parts = line.strip().split()
+            if not parts: continue
+            folder_name = parts[-1]
+            if folder_name == "Current_Mirror": continue
 
-    sched_type = schedule_config.get('type', 'daily')
-    sched_time = schedule_config.get('time', '00:00')
-
-    if sched_type == 'daily':
-        return current_time == sched_time
-    
-    if sched_type == 'monthly':
-        sched_day = int(schedule_config.get('day', 1))
-        return current_day == sched_day and current_time == sched_time
-    
-    return False
+            # Match Backup_YYYY-MM-DD...
+            match = re.search(r"Backup_(\d{4}-\d{2}-\d{2})", folder_name)
+            if match:
+                try:
+                    folder_date = datetime.datetime.strptime(match.group(1), "%Y-%m-%d")
+                    age_days = (now - folder_date).days
+                    if age_days > keep_days:
+                        print(f"   🗑️ PURGING: {folder_name} ({age_days} days old)...")
+                        subprocess.run([RCLONE_BIN, "purge", f"{base_remote}{start_remote_path}/{folder_name}"], check=True)
+                except ValueError:
+                    continue
+    except Exception as e:
+        print(f"⚠️ Retention Error: {e}")
 
 # --- MAIN LOOP ---
 
 def main():
     ensure_rclone()
+    configure_rclone() # Auto-config gdrive
     get_or_create_identity()
     register_agent()
     install_startup()
-    
     
     print(f"👀 Agent {AGENT_ID} Active. Waiting for instructions...")
     
@@ -415,7 +466,6 @@ def main():
             jobs = db.reference(f'configurations/{AGENT_ID}').get() or {}
 
             # 3. Check Manual Triggers (Control)
-            # We look for a 'trigger_queue' in the DB: control/{AGENT_ID}/trigger_job_id
             manual_trigger_job_id = db.reference(f'control/{AGENT_ID}/trigger_now').get()
             if manual_trigger_job_id:
                 # Clear trigger immediately to acknowledge

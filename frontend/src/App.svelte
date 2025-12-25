@@ -157,7 +157,7 @@
 
           <div class="space-y-6">
             <button
-              class="btn btn-block h-16 text-lg font-bold text-slate-900 border-0 bg-secondary hover:bg-secondary/80 shadow-xl shadow-secondary/25 rounded-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+              class="btn btn-block h-16 text-lg font-bold !text-white border-0 bg-secondary hover:bg-secondary/80 shadow-xl shadow-secondary/25 rounded-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
               on:click={login}
             >
               <svg class="w-6 h-6" viewBox="0 0 24 24">
@@ -276,7 +276,11 @@
         {#if currentView === "fleet"}
           <FleetView on:select={handleSelectSystem} />
         {:else if currentView === "system"}
-          <SystemDetailView systemId={selectedSystemId} on:back={goBack} />
+          <SystemDetailView
+            systemId={selectedSystemId}
+            currentUser={user}
+            on:back={goBack}
+          />
         {/if}
       </main>
     </div>
