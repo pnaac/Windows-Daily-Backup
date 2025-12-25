@@ -8,57 +8,151 @@ import sys
 import json
 import re
 import smtplib
+import uuid
+import platform
+import socket
+import urllib.request
+import zipfile
+import shutil
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# ==========================================
-# 1. SYSTEM CONFIGURATION
-# ==========================================
-KEY_PATH = "serviceAccountKey.json"
-RCLONE_REMOTE = "gdrive"  # Must match your 'rclone config' name
+# --- CONFIGURATION ---
+RCLONE_REMOTE = "gdrive"
+RCLONE_VERSION = "v1.65.0"
+RCLONE_URL = f"https://downloads.rclone.org/{RCLONE_VERSION}/rclone-{RCLONE_VERSION}-windows-amd64.zip"
 
-# ==========================================
-# 2. EMAIL CONFIGURATION (Gmail SMTP)
-# ==========================================
-# Generate App Password at: https://myaccount.google.com/apppasswords
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-SENDER_EMAIL = "your.admin.email@gmail.com"  # <--- REPLACE THIS
-SENDER_PASSWORD = "xxxx xxxx xxxx xxxx"  # <--- REPLACE THIS
+# --- GLOBAL STATE ---
+AGENT_ID = None
+RCLONE_BIN = "rclone" # Default to PATH, updated by ensure_rclone
 
-# ==========================================
-# 3. FIREBASE INITIALIZATION
-# ==========================================
+# --- RESOURCE HANDLING ---
+def get_resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+KEY_PATH = get_resource_path("serviceAccountKey.json")
+IDENTITY_FILE = "agent_identity.json" 
+
+# --- DEPENDENCY MANAGEMENT ---
+def ensure_rclone():
+    """ 
+    Checks if rclone is available. 
+    1. Checks local folder (highest priority).
+    2. Checks system PATH.
+    3. Downloads if missing (Windows only logic mostly, but safe to have).
+    """
+    global RCLONE_BIN
+    
+    # 1. Check Bundled Resource (PyInstaller _MEIPASS)
+    # When running as onefile, rclone.exe will be extracted to sys._MEIPASS
+    bundled_bin = get_resource_path("rclone.exe")
+    if os.path.exists(bundled_bin):
+        print(f"✅ Found bundled Rclone: {bundled_bin}")
+        RCLONE_BIN = bundled_bin
+        return
+
+    # 2. Check Local (Updates/Dev)
+    local_bin = os.path.join(os.getcwd(), "rclone.exe" if platform.system() == "Windows" else "rclone")
+    if os.path.exists(local_bin):
+        print(f"✅ Found local rclone: {local_bin}")
+        RCLONE_BIN = local_bin
+        return
+
+    # 2. Check PATH
+    if shutil.which("rclone"):
+        print(f"✅ Found rclone in PATH")
+        RCLONE_BIN = "rclone"
+        return
+
+    # 3. Download (Windows Only for One-Click)
+    if platform.system() == "Windows":
+        print(f"⬇️ Rclone not found. Downloading {RCLONE_VERSION}...")
+        try:
+            zip_path = "rclone.zip"
+            urllib.request.urlretrieve(RCLONE_URL, zip_path)
+            
+            print("📦 Extracting Rclone...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall("rclone_temp")
+            
+            # Move binary to root
+            extracted_folder = f"rclone-{RCLONE_VERSION}-windows-amd64"
+            src = os.path.join("rclone_temp", extracted_folder, "rclone.exe")
+            shutil.move(src, "rclone.exe")
+            
+            # Cleanup
+            os.remove(zip_path)
+            shutil.rmtree("rclone_temp")
+            
+            RCLONE_BIN = os.path.abspath("rclone.exe")
+            print(f"✅ Rclone installed to: {RCLONE_BIN}")
+        except Exception as e:
+            print(f"❌ Failed to download rclone: {e}")
+            print("⚠️ Please install rclone manually and add to PATH.")
+    else:
+         print("⚠️ Rclone not found in PATH. Please install it (brew install rclone / apt install rclone).")
+
+
+# --- FIREBASE INIT ---
 try:
+    if not os.path.exists(KEY_PATH):
+        print(f"❌ CRITICAL: serviceAccountKey.json not found at {KEY_PATH}")
+        sys.exit(1)
+
     cred = credentials.Certificate(KEY_PATH)
+    # NOTE: You must update the databaseURL to your specific project's URL if not already set correctly.
     firebase_admin.initialize_app(cred, {
-        # REPLACE WITH YOUR ACTUAL FIREBASE DB URL
-        'databaseURL': 'https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com/'
+        'databaseURL': 'https://kriplani-builders-default-rtdb.asia-southeast1.firebasedatabase.app' 
     })
-    root_ref = db.reference('/')
     print("✅ Connected to Firebase Command Center")
 except Exception as e:
     print(f"❌ Failed to connect to Firebase: {e}")
     sys.exit(1)
 
 
-# ==========================================
-# 4. HELPER FUNCTIONS
-# ==========================================
+# --- IDENTITY MANAGEMENT ---
+def get_or_create_identity():
+    global AGENT_ID
+    if os.path.exists(IDENTITY_FILE):
+        try:
+            with open(IDENTITY_FILE, "r") as f:
+                data = json.load(f)
+                AGENT_ID = data.get("uuid")
+        except:
+            pass
+    
+    if not AGENT_ID:
+        AGENT_ID = str(uuid.uuid4())
+        with open(IDENTITY_FILE, "w") as f:
+            json.dump({"uuid": AGENT_ID}, f)
+        print(f"🆕 Generate New Agent Identity: {AGENT_ID}")
+    else:
+        print(f"🆔 Loaded Agent Identity: {AGENT_ID}")
 
-def update_status(status, message=""):
-    """Updates the UI Status Card"""
-    try:
-        root_ref.child('state').update({
-            "status": status,
-            "detailed_message": message
-        })
-    except:
-        pass
+    return AGENT_ID
 
+def register_agent():
+    """Updates the systems/{uuid}/meta node with host info."""
+    meta = {
+        "hostname": socket.gethostname(),
+        "os": f"{platform.system()} {platform.release()}",
+        "version": "2.1.0 (Auto-Deploy)",
+        "ip": socket.gethostbyname(socket.gethostname()),
+        "last_boot": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    db.reference(f'systems/{AGENT_ID}/meta').update(meta)
+    print("📡 Registered System Metadata")
+
+# --- HELPER FUNCTIONS ---
 
 def parse_rclone_size(bytes_int):
-    """Converts raw bytes to human readable string (MB, GB)"""
     if bytes_int == 0: return "0 B"
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes_int < 1024:
@@ -66,265 +160,254 @@ def parse_rclone_size(bytes_int):
         bytes_int /= 1024
     return f"{bytes_int:.2f} PB"
 
-
-def send_email_alert(subject, status, details_html, recipients_str):
-    """Sends HTML Email to configured recipients"""
-    if not recipients_str or not SENDER_PASSWORD or "xxxx" in SENDER_PASSWORD:
-        print("⚠️ Email skipped: Credentials or recipients not configured.")
+def send_email_alert(job_name, status, details_html, recipients_str, smtp_settings):
+    """
+    Sends email using provided SMTP settings. 
+    smtp_settings should be a dict: {server, port, email, password}
+    """
+    if not recipients_str or not smtp_settings or "xxxx" in smtp_settings.get('password', ''):
         return
 
     recipients = [email.strip() for email in recipients_str.split(',') if email.strip()]
     if not recipients: return
 
+    sender_email = smtp_settings.get('email')
+    sender_password = smtp_settings.get('password')
+    smtp_server = smtp_settings.get('server', 'smtp.gmail.com')
+    smtp_port = int(smtp_settings.get('port', 587))
+
     msg = MIMEMultipart()
-    msg['From'] = f"Backup Controller <{SENDER_EMAIL}>"
+    msg['From'] = f"Backup Agent <{sender_email}>"
     msg['To'] = ", ".join(recipients)
-    msg['Subject'] = f"[{status}] {subject}"
+    msg['Subject'] = f"[{status}] {job_name} - {socket.gethostname()}"
 
     color = "#10B981" if status == "SUCCESS" else "#EF4444"
-
     body = f"""
-    <html>
-      <body style="font-family: sans-serif; color: #333;">
+    <html><body style="font-family: sans-serif; color: #333;">
         <div style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden; max-width: 600px;">
           <div style="background-color: {color}; padding: 15px; color: white; text-align: center;">
-            <h2 style="margin:0;">Backup {status}</h2>
+            <h2 style="margin:0;">{job_name}: {status}</h2>
           </div>
           <div style="padding: 20px;">
+            <p><strong>System:</strong> {socket.gethostname()}</p>
             <p><strong>Time:</strong> {datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")}</p>
-            <table style="width: 100%; border-collapse: collapse;">
-                {details_html}
-            </table>
-            <p style="font-size: 12px; color: #999; margin-top: 20px;">Automated Alert from Agent.</p>
+            <table style="width: 100%; border-collapse: collapse;">{details_html}</table>
           </div>
         </div>
-      </body>
-    </html>
+    </body></html>
     """
     msg.attach(MIMEText(body, 'html'))
 
     try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.sendmail(SENDER_EMAIL, recipients, msg.as_string())
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, recipients, msg.as_string())
         server.quit()
-        print(f"📧 Email sent to {len(recipients)} recipients.")
     except Exception as e:
         print(f"❌ Email Failed: {e}")
 
-
-def enforce_retention(remote_folder_root, config):
-    """
-    Lists folders on Google Drive and deletes those older than 'keep_daily_days'.
-    """
+def enforce_retention(start_remote_path, retention_days):
+    if not retention_days: return
     try:
-        policy = config.get('retention_policy', {})
-        keep_daily_days = int(policy.get('keep_daily_days', 60))
-
-        print(f"🧹 Retention Check: Keeping last {keep_daily_days} days.")
-
-        # 1. List folders using Rclone
-        # Output format example: " -1 2025-12-22 15:30:00 -1 Backup_2025-12-22_15-30"
-        result = subprocess.run(
-            ["rclone", "lsd", f"{RCLONE_REMOTE}:{remote_folder_root}"],
-            capture_output=True, text=True
-        )
-
-        if result.returncode != 0:
-            print("⚠️ Retention skipped: Could not list folders.")
-            return
+        keep_days = int(retention_days)
+        print(f"🧹 Retention Check: {start_remote_path} (Keep {keep_days} days)")
+        
+        # List directories in the specific job folder
+        result = subprocess.run([RCLONE_BIN, "lsd", f"{RCLONE_REMOTE}:{start_remote_path}"], capture_output=True, text=True)
+        
+        if result.returncode != 0: return
 
         now = datetime.datetime.now()
-        folders_deleted = 0
-
         for line in result.stdout.splitlines():
             parts = line.strip().split()
             if not parts: continue
-            folder_name = parts[-1]  # The last part is the folder name
-
-            # Safety Check: Never delete the Mirror
+            folder_name = parts[-1]
             if folder_name == "Current_Mirror": continue
 
-            # Regex to parse date from "Backup_2025-12-22_09-00"
             match = re.search(r"Backup_(\d{4}-\d{2}-\d{2})", folder_name)
             if match:
-                date_str = match.group(1)
                 try:
-                    folder_date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+                    folder_date = datetime.datetime.strptime(match.group(1), "%Y-%m-%d")
                     age_days = (now - folder_date).days
-
-                    if age_days > keep_daily_days:
+                    if age_days > keep_days:
                         print(f"   🗑️ PURGING: {folder_name} ({age_days} days old)...")
-                        subprocess.run(
-                            ["rclone", "purge", f"{RCLONE_REMOTE}:{remote_folder_root}/{folder_name}"],
-                            check=True
-                        )
-                        folders_deleted += 1
+                        subprocess.run([RCLONE_BIN, "purge", f"{RCLONE_REMOTE}:{start_remote_path}/{folder_name}"], check=True)
                 except ValueError:
                     continue
-
-        if folders_deleted > 0:
-            print(f"   ✅ Deleted {folders_deleted} old backups.")
-        else:
-            print("   ✅ No old backups found to delete.")
-
     except Exception as e:
         print(f"⚠️ Retention Error: {e}")
 
+def perform_backup(job_id, job_config, global_config):
+    job_name = job_config.get('name', 'Unknown Job')
+    source_path = job_config.get('source_path')
+    remote_root = job_config.get('remote_folder', 'Backups')
+    destination_subfolder = job_config.get('destination_subfolder', job_name.replace(" ", "_"))
+    
+    # Construct paths
+    full_remote_path = f"{remote_root}/{destination_subfolder}"
+    mirror_path = f"{full_remote_path}/Current_Mirror"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    backup_path = f"{full_remote_path}/Backup_{timestamp}"
 
-# ==========================================
-# 5. CORE BACKUP LOGIC
-# ==========================================
+    print(f"\n🚀 Starting Job: {job_name} ({source_path})")
 
-def perform_backup(config):
-    start_time = time.time()
+    # Update Job State -> Running
+    state_ref = db.reference(f'runtime_state/{AGENT_ID}/job_states/{job_id}')
+    state_ref.update({"status": "Running", "detailed_message": "Syncing...", "start_time": timestamp})
 
-    # Read Config
-    source_folder = config.get('source_path', r"D:\TallyData")
-    remote_folder_root = config.get('remote_folder', "Kriplani_Backups")
-    email_recipients = config.get('email_recipients', "")
-
-    print(f"\n🚀 Starting Backup Workflow...")
-    print(f"   Source: {source_folder}")
-
-    if not os.path.exists(source_folder):
-        err = f"Source folder not found: {source_folder}"
-        update_status("Error", err)
-        send_email_alert("Backup Failed", "FAILURE", f"<tr><td>Error:</td><td>{err}</td></tr>", email_recipients)
+    if not os.path.exists(source_path):
+        err = f"Source not found: {source_path}"
+        state_ref.update({"status": "Error", "detailed_message": err})
         return
 
-    update_status("Running", "Syncing & Calculating Delta...")
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-    backup_name = f"{remote_folder_root}/Backup_{timestamp}"
-    mirror_path = f"{remote_folder_root}/Current_Mirror"
     bytes_transferred = 0
-
     try:
-        # --- STEP A: SYNC (Mirroring) ---
-        # We use --use-json-log to capture the exact bytes transferred for the chart
-        print("   1️⃣  Syncing to Cloud Mirror...")
+        # 1. Sync
         process = subprocess.Popen(
-            ["rclone", "sync", source_folder, f"{RCLONE_REMOTE}:{mirror_path}",
+            [RCLONE_BIN, "sync", source_path, f"{RCLONE_REMOTE}:{mirror_path}",
              "--transfers", "8", "--use-json-log", "--stats", "1s"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-
-        # Parse live logs for stats
+        
+        # Simple stats monitoring
         while True:
             line = process.stderr.readline()
             if not line and process.poll() is not None: break
             if line:
                 try:
                     log_entry = json.loads(line)
-                    if 'stats' in log_entry:
+                    if 'stats' in log_entry: 
                         bytes_transferred = log_entry['stats'].get('bytes', 0)
+                        # Optional: Update realtime stats to DB? Might be too spammy.
                 except:
                     pass
+        
+        if process.returncode != 0: raise Exception("Rclone Sync Failed")
 
-        if process.returncode != 0:
-            raise Exception("Rclone Sync process returned error code.")
+        # 2. Snapshot (Copy)
+        state_ref.update({"detailed_message": "Creating Snapshot..."})
+        subprocess.run([RCLONE_BIN, "copy", f"{RCLONE_REMOTE}:{mirror_path}", f"{RCLONE_REMOTE}:{backup_path}",
+                        "--server-side-across-configs"], check=True)
 
-        # --- STEP B: SNAPSHOT (Server Side Copy) ---
-        print("   2️⃣  Creating Immutable Snapshot...")
-        update_status("Running", "Creating immutable snapshot...")
-        subprocess.run([
-            "rclone", "copy", f"{RCLONE_REMOTE}:{mirror_path}", f"{RCLONE_REMOTE}:{backup_name}",
-            "--server-side-across-configs"
-        ], check=True)
+        # 3. Retention
+        retention = job_config.get('retention', {}).get('days', 60)
+        enforce_retention(full_remote_path, retention)
 
-        # --- STEP C: RETENTION ---
-        print("   3️⃣  Checking Retention Policy...")
-        enforce_retention(remote_folder_root, config)
-
-        # --- STEP D: METRICS & REPORTING ---
-        end_time = time.time()
-        duration_str = f"{int(end_time - start_time)}s"
+        # Success
         size_str = parse_rclone_size(bytes_transferred)
-        success_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        # Update Firebase Stats
-        root_ref.child('stats').update({
-            "last_run_date": success_date,
-            "last_duration_str": duration_str,
-            "last_data_transferred_str": size_str
+        success_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        state_ref.update({
+            "status": "Success", 
+            "detailed_message": f"Done. {size_str} uploaded.",
+            "last_run": success_time,
+            "last_size": size_str
         })
-
-        # Add to History Log
-        root_ref.child('history').push({
-            "timestamp": success_date,
+        
+        # Logs
+        log_entry = {
+            "timestamp": success_time,
+            "job_name": job_name,
             "status": "Success",
-            "duration": duration_str,
             "size": size_str,
-            "type": "Scheduled" if not config.get('trigger_now') else "Manual"
-        })
+            "type": "Scheduled"
+        }
+        db.reference(f'logs/{AGENT_ID}').push(log_entry)
 
-        print(f"✅ Backup Complete. Delta: {size_str}")
-        update_status("Idle", f"Success. Uploaded: {size_str}")
-
-        # Send Success Email
-        details = f"""
-        <tr><td style='padding:5px;'><strong>Duration:</strong></td><td>{duration_str}</td></tr>
-        <tr><td style='padding:5px;'><strong>Data Uploaded:</strong></td><td>{size_str}</td></tr>
-        <tr><td style='padding:5px;'><strong>Source:</strong></td><td>{source_folder}</td></tr>
-        <tr><td style='padding:5px;'><strong>Cloud Folder:</strong></td><td>{backup_name}</td></tr>
-        """
-        send_email_alert("Daily Backup Success", "SUCCESS", details, email_recipients)
-
-        # Shutdown if configured
-        if config.get('shutdown_after_backup') == True:
-            print("💤 Shutdown requested.")
-            os.system("shutdown /s /t 60")
-            sys.exit(0)
+        # Email
+        email_recipients = job_config.get('email_recipients', global_config.get('default_email_recipients', ''))
+        smtp_settings = global_config.get('smtp', {})
+        details = f"<tr><td>Job:</td><td>{job_name}</td></tr><tr><td>Data:</td><td>{size_str}</td></tr>"
+        send_email_alert(job_name, "SUCCESS", details, email_recipients, smtp_settings)
 
     except Exception as e:
-        print(f"❌ Error: {e}")
-        update_status("Error", str(e))
-        send_email_alert("Backup Failed", "FAILURE", f"<tr><td>Error:</td><td>{str(e)}</td></tr>", email_recipients)
+        print(f"❌ Job Failed: {e}")
+        state_ref.update({"status": "Error", "detailed_message": str(e)})
+        
+        # Email Failure
+        email_recipients = job_config.get('email_recipients', global_config.get('default_email_recipients', ''))
+        smtp_settings = global_config.get('smtp', {})
+        send_email_alert(job_name, "FAILURE", f"<tr><td>Error:</td><td>{str(e)}</td></tr>", email_recipients, smtp_settings)
 
 
-# ==========================================
-# 6. MAIN LISTENER LOOP
-# ==========================================
-print("👀 Agent Active. Waiting for commands...")
+# --- SCHEDULING LOGIC ---
+def check_schedule(schedule_config):
+    """
+    Returns True if the job should run NOW.
+    Supports:
+    - Daily: { "type": "daily", "time": "HH:MM" }
+    - Monthly: { "type": "monthly", "day": 1, "time": "HH:MM" }
+    """
+    now = datetime.datetime.now()
+    current_time = now.strftime("%H:%M")
+    current_day = now.day
 
-while True:
-    try:
-        # 1. Send Heartbeat (Epoch Time)
-        current_epoch = int(time.time())
-        root_ref.child('state').update({"agent_heartbeat_epoch": current_epoch})
+    sched_type = schedule_config.get('type', 'daily')
+    sched_time = schedule_config.get('time', '00:00')
 
-        # 2. Read Configuration
-        full_db = root_ref.get()
-        if not full_db:
+    if sched_type == 'daily':
+        return current_time == sched_time
+    
+    if sched_type == 'monthly':
+        sched_day = int(schedule_config.get('day', 1))
+        return current_day == sched_day and current_time == sched_time
+    
+    return False
+
+# --- MAIN LOOP ---
+
+def main():
+    ensure_rclone()
+    get_or_create_identity()
+    register_agent()
+    
+    print(f"👀 Agent {AGENT_ID} Active. Waiting for instructions...")
+    
+    # Simple mechanism to prevent double-running in the same minute
+    last_processed_minute = ""
+
+    while True:
+        try:
+            # 1. Heartbeat
+            db.reference(f'systems/{AGENT_ID}/heartbeat').set(int(time.time()))
+
+            # 2. Fetch Configuration
+            global_config = db.reference(f'global_config').get() or {}
+            jobs = db.reference(f'configurations/{AGENT_ID}').get() or {}
+
+            # 3. Check Manual Triggers (Control)
+            # We look for a 'trigger_queue' in the DB: control/{AGENT_ID}/trigger_job_id
+            manual_trigger_job_id = db.reference(f'control/{AGENT_ID}/trigger_now').get()
+            if manual_trigger_job_id:
+                # Clear trigger immediately to acknowledge
+                db.reference(f'control/{AGENT_ID}/trigger_now').set(None)
+                if manual_trigger_job_id in jobs:
+                    print(f"⚡ Manual Trigger received for {manual_trigger_job_id}")
+                    perform_backup(manual_trigger_job_id, jobs[manual_trigger_job_id], global_config)
+                elif manual_trigger_job_id == "ALL":
+                    for jid, jconf in jobs.items():
+                        perform_backup(jid, jconf, global_config)
+
+            # 4. Scheduled Checks
+            current_minute = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            if current_minute != last_processed_minute:
+                # New minute, check schedules
+                last_processed_minute = current_minute
+                for job_id, job_config in jobs.items():
+                    schedule = job_config.get('schedule', {})
+                    if check_schedule(schedule):
+                        print(f"⏰ Schedule matched for {job_id}")
+                        perform_backup(job_id, job_config, global_config)
+
             time.sleep(5)
-            continue
 
-        config = full_db.get('config', {})
-        control = full_db.get('control', {})
-        state = full_db.get('state', {})
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Glitch: {e}")
+            time.sleep(10)
 
-        # 3. Check Manual Trigger
-        if control.get('trigger_now') == True:
-            root_ref.child('control').update({"trigger_now": False})
-            perform_backup(config)
-
-        # 4. Check Schedule
-        current_hhmm = datetime.datetime.now().strftime("%H:%M")
-        scheduled_time = config.get('schedule_time', '21:00')
-
-        # Debounce logic: Only run if Idle and within first 10s of the minute
-        if current_hhmm == scheduled_time and state.get('status') == "Idle":
-            if datetime.datetime.now().second < 10:
-                perform_backup(config)
-                time.sleep(60)  # Wait to avoid double run
-
-        time.sleep(5)  # Poll every 5 seconds
-
-    except KeyboardInterrupt:
-        print("\n🛑 Agent stopping...")
-        break
-    except Exception as e:
-        print(f"⚠️ Connection Glitch: {e}")
-        time.sleep(10)
+if __name__ == "__main__":
+    main()

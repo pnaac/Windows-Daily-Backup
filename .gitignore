@@ -12,4 +12,4 @@ dist/
 
 # Firebase / Secrets (VERY IMPORTANT)
 serviceAccountKey.json
-.firebase/
+.firebase/agent/agent_identity.json

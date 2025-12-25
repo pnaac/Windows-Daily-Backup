@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <defs>
+        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#06B6D4;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+    <!-- Shield Background -->
+    <path d="M256 0C114.6 0 0 114.6 0 256s114.6 256 256 256 256-114.6 256-256S397.4 0 256 0z" fill="white"/>
+    <path d="M256 48C141.1 48 48 141.1 48 256s93.1 208 208 208 208-93.1 208-208S370.9 48 256 48z" fill="url(#grad1)"/>
+
+    <!-- Checkmark/Cloud Icon -->
+    <path d="M362.3 186.3c-6.2-6.2-16.4-6.2-22.6 0L224 302.1l-63.7-63.7c-6.2-6.2-16.4-6.2-22.6 0s-6.2 16.4 0 22.6l75 75c6.2 6.2 16.4 6.2 22.6 0l127-127c6.2-6.2 6.2-16.4 0-22.6z" fill="white" stroke="white" stroke-width="10"/>
+</svg>

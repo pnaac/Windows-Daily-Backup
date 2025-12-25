@@ -1,8 +1,9 @@
 // src/lib/firebase.js
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, update } from "firebase/database";
+import { getDatabase } from "firebase/database";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
-// PASTE YOUR CONFIG HERE
+// REPLACE WITH YOUR ACTUAL FIREBASE PROJECT CONFIG
 const firebaseConfig = {
     apiKey: "AIzaSyAViIs8bdZwePqdBplENkml0hHY6PwTktE",
     authDomain: "kriplani-builders.firebaseapp.com",
@@ -14,7 +15,16 @@ const firebaseConfig = {
     measurementId: "G-SYDN2NK44Y"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
 
-export { db, ref, onValue, update };
+// Initialize Services
+const db = getDatabase(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+// Export functions for use in Svelte
+// Export functions for use in Svelte
+export { db, auth, provider };
+export { ref, onValue, update, push } from "firebase/database";
+export { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
