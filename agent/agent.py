@@ -138,6 +138,42 @@ def get_or_create_identity():
 
     return AGENT_ID
 
+# --- PERSISTENCE ---
+def install_startup():
+    """ Adds the current executable to Windows Startup Registry """
+    if platform.system() != "Windows": return
+
+    try:
+        import winreg
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        app_name = "KriplaniBackupAgent"
+        exe_path = sys.executable 
+
+        # If running as script (dev), don't install
+        if not getattr(sys, 'frozen', False):
+            return
+
+        print(f"⚙️ Checking persistence for: {exe_path}")
+        
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
+            try:
+                registry_value, _ = winreg.QueryValueEx(key, app_name)
+                if registry_value == exe_path:
+                    print("✅ Already in Startup")
+                    winreg.CloseKey(key)
+                    return
+            except FileNotFoundError:
+                pass # Key doesn't exist, proceed to write
+
+            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+            winreg.CloseKey(key)
+            print("💾 Added to Startup Registry")
+        except Exception as e:
+            print(f"⚠️ Failed to manage Registry: {e}")
+    except ImportError:
+        pass
+
 def register_agent():
     """Updates the systems/{uuid}/meta node with host info."""
     meta = {
@@ -361,6 +397,8 @@ def main():
     ensure_rclone()
     get_or_create_identity()
     register_agent()
+    install_startup()
+    
     
     print(f"👀 Agent {AGENT_ID} Active. Waiting for instructions...")
     
