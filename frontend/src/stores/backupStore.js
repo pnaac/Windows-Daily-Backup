@@ -39,6 +39,34 @@ function createBackupStore() {
         }
       );
     },
+    refresh: (userId) => {
+      // Force unmount and remount listener
+      unsubscribe();
+      update((s) => ({ ...s, loading: true }));
+      // Small delay to ensure clean state reset visually
+      setTimeout(() => {
+        const rootRef = ref(db, "/");
+        unsubscribe = onValue(
+          rootRef,
+          (snapshot) => {
+            const data = snapshot.val() || {};
+            update((s) => ({
+              ...s,
+              systems: data.systems || {},
+              configurations: data.configurations || {},
+              runtime_state: data.runtime_state || {},
+              logs: data.logs || {},
+              audit_logs: data.audit_logs || {},
+              loading: false,
+            }));
+          },
+          (error) => {
+            console.error("Firebase Read Error:", error);
+            update((s) => ({ ...s, error: error.message, loading: false }));
+          }
+        );
+      }, 500);
+    },
     destroy: () => unsubscribe(),
   };
 }

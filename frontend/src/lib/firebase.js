@@ -26,5 +26,5 @@ const provider = new GoogleAuthProvider();
 // Export functions for use in Svelte
 // Export functions for use in Svelte
 export { db, auth, provider };
-export { ref, onValue, update, push } from "firebase/database";
+export { ref, onValue, update, push, remove } from "firebase/database";
 export { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";

@@ -3,6 +3,7 @@
 1.  **Prerequisites**:
     -   A machine running Windows 10 or 11.
     -   Python installed (Make sure to check "Add Python to PATH" during install).
+    -   **Important**: Enable "Google Drive API" in your Google Cloud Project (kriplani-builders). The agent needs this to perform backups.
 
 2.  **Setup**:
     -   Copy this entire `agent` folder to the Windows machine.

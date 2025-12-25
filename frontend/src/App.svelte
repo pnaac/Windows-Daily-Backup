@@ -274,7 +274,7 @@
       <!-- Main Content -->
       <main class="flex-1 p-6 overflow-y-auto">
         {#if currentView === "fleet"}
-          <FleetView on:select={handleSelectSystem} />
+          <FleetView on:select={handleSelectSystem} currentUser={user} />
         {:else if currentView === "system"}
           <SystemDetailView
             systemId={selectedSystemId}

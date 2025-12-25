@@ -3,7 +3,7 @@
   import { auth } from "../lib/firebase";
   import { createEventDispatcher } from "svelte";
   import { Icons } from "../components/Icons";
-  import { db, ref, update } from "../lib/firebase";
+  import { db, ref, update, remove } from "../lib/firebase";
 
   export let systemId;
   export let currentUser; // Received from App.svelte
@@ -118,7 +118,11 @@
         "DANGER: Are you sure you want to PERMANENTLY delete this system?\n\nThis will remove all configurations, logs, and metadata for this machine from the dashboard.\n\nThe Agent on the machine will need to be re-run to re-register."
       )
     ) {
-      // ...
+      // Delete from all paths
+      remove(ref(db, `systems/${systemId}`));
+      remove(ref(db, `configurations/${systemId}`));
+      remove(ref(db, `control/${systemId}`));
+      remove(ref(db, `runtime_state/${systemId}`));
       logAuditAction(
         currentUser?.email,
         "DELETE_SYSTEM",
@@ -128,6 +132,15 @@
 
       dispatch("back"); // Go back to fleet view
     }
+  }
+
+  // Error Modal State
+  let selectedErrorMessage = "";
+
+  function showError(msg) {
+    selectedErrorMessage = msg;
+    // @ts-ignore
+    document.getElementById("error_modal").showModal();
   }
 </script>
 
@@ -274,6 +287,28 @@
     </div>
 
     <div class="flex gap-2 mt-4 md:mt-0">
+      <button
+        class="btn btn-sm btn-ghost gap-2"
+        on:click={() => backupStore.refresh()}
+        title="Force Refresh Data"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="1.5"
+          stroke="currentColor"
+          class="w-4 h-4"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+          />
+        </svg>
+        Refresh
+      </button>
+
       {#if currentUser?.email
         ?.trim()
         .toLowerCase() === "admin@kriplanibuilders.com"}
@@ -392,12 +427,16 @@
                       {state.status || "Pending"}
                     </span>
                     {#if state.status === "Error"}
-                      <div
-                        class="text-[10px] text-error mt-0.5 max-w-[150px] truncate"
-                        title={state.detailed_message}
+                      <button
+                        class="text-[10px] text-error mt-0.5 text-left hover:underline focus:outline-none"
+                        on:click={() => showError(state.detailed_message)}
+                        title="Click to view full error log"
                       >
-                        {state.detailed_message}
-                      </div>
+                        {state.detailed_message &&
+                        state.detailed_message.length > 40
+                          ? state.detailed_message.slice(0, 40) + "..."
+                          : state.detailed_message}
+                      </button>
                     {/if}
                   </div>
                   <span class="text-[10px] text-base-content/40 mt-1"
@@ -474,6 +513,47 @@
       </table>
     </div>
   </div>
+
+  <!-- Error Display Modal -->
+
+  <!-- ERROR MODAL -->
+  <dialog id="error_modal" class="modal">
+    <div class="modal-box border border-error/20">
+      <h3 class="font-bold text-lg text-error flex items-center gap-2">
+        <svg
+          class="w-6 h-6"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          ><path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          ></path></svg
+        >
+        Job Execution Failed
+      </h3>
+      <div class="py-4">
+        <p class="text-sm opacity-70 mb-2">
+          The agent reported the following error:
+        </p>
+        <div
+          class="bg-base-200 p-4 rounded-lg font-mono text-xs break-all text-error"
+        >
+          {selectedErrorMessage}
+        </div>
+      </div>
+      <div class="modal-action">
+        <form method="dialog">
+          <button class="btn">Close</button>
+        </form>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
 
   <!-- EDIT MODAL -->
   <dialog class="modal {isEditing ? 'modal-open' : ''}">

@@ -11,6 +11,7 @@ import smtplib
 import uuid
 import platform
 import socket
+import traceback
 import urllib.request
 import zipfile
 import shutil
@@ -295,6 +296,14 @@ def check_schedule(schedule_config):
 def perform_backup(job_id, job_config, global_config):
     job_name = job_config.get('name', 'Unknown Job')
     source_path = job_config.get('source_path')
+
+    if not source_path:
+        print(f"⚠️ Error: Job '{job_name}' has no Local Source Path configured. Skipping.")
+        db.reference(f'runtime_state/{AGENT_ID}/job_states/{job_id}').update({
+            "status": "Error",
+            "detailed_message": "Configuration Error: Local Source Path is missing."
+        })
+        return
     
     # Handle Remote Configuration (Folder Path vs Folder ID)
     raw_remote = job_config.get('remote_folder', 'Backups')
@@ -502,8 +511,9 @@ def main():
         except KeyboardInterrupt:
             print("\nExiting...")
             sys.exit(0)
-        except Exception as e:
-            print(f"Glitch: {e}")
+        except Exception:
+            print(f"Glitch (Unexpected Error):")
+            traceback.print_exc()
             time.sleep(10)
 
 if __name__ == "__main__":
