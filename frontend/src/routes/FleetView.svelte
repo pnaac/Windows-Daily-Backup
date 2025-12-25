@@ -38,7 +38,7 @@
   }
 </script>
 
-<div>
+<div class="max-w-7xl mx-auto px-4">
   <!-- Action Toolbar -->
   <div
     class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4"
