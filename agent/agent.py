@@ -347,6 +347,7 @@ def perform_backup(job_id, job_config, global_config):
         )
         
         # Simple stats monitoring
+        last_error_lines = []
         while True:
             line = process.stderr.readline()
             if not line and process.poll() is not None: break
@@ -355,10 +356,18 @@ def perform_backup(job_id, job_config, global_config):
                     log_entry = json.loads(line)
                     if 'stats' in log_entry: 
                         bytes_transferred = log_entry['stats'].get('bytes', 0)
+                    elif 'level' in log_entry and log_entry['level'] == 'error':
+                        # Capture structured rclone errors
+                        last_error_lines.append(log_entry.get('msg', ''))
                 except:
+                    # Capture raw non-JSON errors (like auth failure)
+                    last_error_lines.append(line.strip())
                     pass
         
-        if process.returncode != 0: raise Exception("Rclone Sync Failed")
+        if process.returncode != 0: 
+            error_msg = "; ".join(last_error_lines[-3:]) # Last 3 errors
+            if not error_msg: error_msg = "Rclone Sync Failed (Unknown Error)"
+            raise Exception(error_msg)
 
         # 2. Snapshot (Copy)
         state_ref.update({"detailed_message": f"Creating Snapshot: Backup_{timestamp}..."})
