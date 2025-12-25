@@ -74,15 +74,15 @@
 {:else if !user}
   <!-- Enterprise Login Screen (Floating Card Design) -->
   <div
-    class="min-h-screen flex items-center justify-center bg-slate-100 p-4 sm:p-6 md:p-8 lg:p-12 font-sans"
+    class="min-h-screen flex items-center justify-center bg-slate-100 p-4 lg:p-12 font-sans"
   >
     <!-- Floating Card Container -->
     <div
-      class="w-full max-w-6xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[600px] lg:min-h-[700px]"
+      class="w-full max-w-6xl bg-white rounded-2xl lg:rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-0 lg:min-h-[700px]"
     >
       <!-- Left Side: Branding (Dark Aesthetic) -->
       <div
-        class="lg:w-5/12 bg-slate-900 relative p-12 flex flex-col justify-between overflow-hidden"
+        class="lg:w-5/12 bg-slate-900 relative p-8 lg:p-12 flex flex-col justify-between overflow-hidden min-h-[300px] lg:min-h-auto"
       >
         <!-- Background Pattern -->
         <div class="absolute inset-0 opacity-20">
@@ -105,19 +105,23 @@
         </div>
         <!-- Floating Orbs -->
         <div
-          class="absolute top-20 right-10 w-32 h-32 bg-primary blur-[80px] rounded-full opacity-40"
+          class="absolute top-20 right-10 w-20 h-20 lg:w-32 lg:h-32 bg-primary blur-[60px] lg:blur-[80px] rounded-full opacity-40"
         ></div>
         <div
-          class="absolute bottom-20 left-10 w-40 h-40 bg-secondary blur-[80px] rounded-full opacity-30"
+          class="absolute bottom-20 left-10 w-24 h-24 lg:w-40 lg:h-40 bg-secondary blur-[60px] lg:blur-[80px] rounded-full opacity-30"
         ></div>
 
         <!-- Brand Content -->
-        <div class="relative z-10 mt-10">
-          <div class="w-16 h-1 bg-secondary rounded-full mb-6"></div>
-          <h1 class="text-5xl font-bold text-white leading-tight mb-6">
+        <div class="relative z-10 mt-6 lg:mt-10">
+          <div
+            class="w-12 h-1 lg:w-16 bg-secondary rounded-full mb-4 lg:mb-6"
+          ></div>
+          <h1
+            class="text-3xl lg:text-5xl font-bold text-white leading-tight mb-4 lg:mb-6"
+          >
             Kriplani<br />Consumables.
           </h1>
-          <p class="text-slate-400 text-lg">
+          <p class="text-slate-400 text-sm lg:text-lg">
             Next-Gen Enterprise Infrastructure
           </p>
         </div>
@@ -129,7 +133,7 @@
 
       <!-- Right Side: Login Form (Clean with Graphics) -->
       <div
-        class="lg:w-7/12 bg-white relative p-12 lg:p-24 flex flex-col justify-center"
+        class="lg:w-7/12 bg-white relative p-8 lg:p-24 flex flex-col justify-center py-12 lg:py-0"
       >
         <!-- Decorative Corner Graphic -->
         <svg
