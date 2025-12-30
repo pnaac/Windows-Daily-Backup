@@ -114,13 +114,13 @@
     });
   }
 
-  // Calculate KPIs
-  $: kpiTotalJobs = Object.keys(jobs).length;
   $: kpiLastActive = Object.values(jobStates).reduce((latest, state) => {
     if (!state.last_run) return latest;
-    // Simple string compare works for ISO-like dates, but let's be safe if format varies
     return state.last_run > latest ? state.last_run : latest;
-  }, "Never");
+  }, ""); // Init empty strings, because "2024" < "Never" in string compare
+
+  $: kpiLastActiveDisplay = kpiLastActive || "Never";
+
   $: kpiHealth = Object.values(jobStates).filter(
     (s) => s.status === "Success"
   ).length;
@@ -231,7 +231,9 @@
         >
           Last Activity
         </div>
-        <div class="stat-value text-secondary text-2xl">{kpiLastActive}</div>
+        <div class="stat-value text-secondary text-2xl">
+          {kpiLastActiveDisplay}
+        </div>
         <div class="stat-desc">Most recent backup run</div>
       </div>
     </div>
