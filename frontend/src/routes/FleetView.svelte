@@ -15,25 +15,49 @@
       sys.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Confirmation Modal State
+  let confirmState = {
+    isOpen: false,
+    title: "",
+    message: "",
+    isDanger: false,
+    onConfirm: () => {},
+  };
+
+  function openConfirmModal({ title, message, isDanger, onConfirm }) {
+    confirmState = { isOpen: true, title, message, isDanger, onConfirm };
+    // @ts-ignore
+    document.getElementById("fleet_confirmation_modal").showModal();
+  }
+
+  function handleConfirm() {
+    confirmState.onConfirm();
+    // @ts-ignore
+    document.getElementById("fleet_confirmation_modal").close();
+    confirmState.isOpen = false;
+  }
+
   function deleteSystem(e, system) {
     if (e) e.stopPropagation(); // Prevent card navigation
-    if (
-      currentUser?.email?.toLowerCase() === "admin@kriplanibuilders.com" &&
-      confirm(
-        `DANGER: Permanently delete system "${system.name}"?\n\nThis will remove it from the dashboard. If the agent is still running, it may reappear.`
-      )
-    ) {
-      remove(ref(db, `systems/${system.id}`));
-      remove(ref(db, `configurations/${system.id}`));
-      remove(ref(db, `control/${system.id}`));
-      remove(ref(db, `runtime_state/${system.id}`));
+    if (currentUser?.email?.toLowerCase() === "admin@kriplanibuilders.com") {
+      openConfirmModal({
+        title: `Delete System: ${system.name}?`,
+        message: `DANGER: Permanently delete system "${system.name}"?\n\nThis will remove it from the dashboard. If the agent is still running, it may reappear.`,
+        isDanger: true,
+        onConfirm: () => {
+          remove(ref(db, `systems/${system.id}`));
+          remove(ref(db, `configurations/${system.id}`));
+          remove(ref(db, `control/${system.id}`));
+          remove(ref(db, `runtime_state/${system.id}`));
 
-      logAuditAction(
-        currentUser?.email,
-        "DELETE_SYSTEM",
-        system.id,
-        `Deleted system from Fleet: ${system.name}`
-      );
+          logAuditAction(
+            currentUser?.email,
+            "DELETE_SYSTEM",
+            system.id,
+            `Deleted system from Fleet: ${system.name}`
+          );
+        },
+      });
     }
   }
 </script>
@@ -212,4 +236,33 @@
       </div>
     {/each}
   </div>
+  <!-- CONFIRMATION MODAL -->
+  <dialog id="fleet_confirmation_modal" class="modal">
+    <div class="modal-box bg-base-100">
+      <h3
+        class="font-bold text-lg {confirmState.isDanger
+          ? 'text-error'
+          : 'text-base-content'}"
+      >
+        {confirmState.title}
+      </h3>
+      <p class="py-4 whitespace-pre-line">{confirmState.message}</p>
+      <div class="modal-action">
+        <form method="dialog">
+          <button class="btn btn-ghost">Cancel</button>
+          <button
+            class="btn {confirmState.isDanger
+              ? 'btn-error'
+              : 'btn-primary'} text-white ml-2"
+            on:click|preventDefault={handleConfirm}
+          >
+            Confirm
+          </button>
+        </form>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
 </div>

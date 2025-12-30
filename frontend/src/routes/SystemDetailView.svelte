@@ -75,16 +75,43 @@
     isEditing = false;
   }
 
+  // Confirmation Modal State
+  let confirmState = {
+    isOpen: false,
+    title: "",
+    message: "",
+    isDanger: false,
+    onConfirm: () => {},
+  };
+
+  function openConfirmModal({ title, message, isDanger, onConfirm }) {
+    confirmState = { isOpen: true, title, message, isDanger, onConfirm };
+    // @ts-ignore
+    document.getElementById("confirmation_modal").showModal();
+  }
+
+  function handleConfirm() {
+    confirmState.onConfirm();
+    // @ts-ignore
+    document.getElementById("confirmation_modal").close();
+    confirmState.isOpen = false;
+  }
+
   function triggerJob(jobId) {
-    if (confirm(`Run ${jobs[jobId].name} now?`)) {
-      update(ref(db, `control/${systemId}`), { trigger_now: jobId });
-      logAuditAction(
-        currentUser?.email,
-        "TRIGGER_JOB",
-        systemId,
-        `Manually triggered job "${jobs[jobId].name}"`
-      );
-    }
+    openConfirmModal({
+      title: "Run Backup Job?",
+      message: `Are you sure you want to run "${jobs[jobId].name}" immediately?`,
+      isDanger: false,
+      onConfirm: () => {
+        update(ref(db, `control/${systemId}`), { trigger_now: jobId });
+        logAuditAction(
+          currentUser?.email,
+          "TRIGGER_JOB",
+          systemId,
+          `Manually triggered job "${jobs[jobId].name}"`
+        );
+      },
+    });
   }
 
   // Calculate KPIs
@@ -99,38 +126,46 @@
   ).length;
 
   function deleteJob(jobId) {
-    if (confirm("Delete this job configuration?")) {
-      const jobName = jobs[jobId]?.name || jobId;
-      update(ref(db, `configurations/${systemId}/${jobId}`), null);
-      logAuditAction(
-        currentUser?.email,
-        "DELETE_JOB",
-        systemId,
-        `Deleted job "${jobName}" (${jobId})`
-      );
-    }
+    openConfirmModal({
+      title: "Delete Job?",
+      message: "This will permanently remove this backup configuration.",
+      isDanger: true,
+      onConfirm: () => {
+        const jobName = jobs[jobId]?.name || jobId;
+        update(ref(db, `configurations/${systemId}/${jobId}`), null);
+        logAuditAction(
+          currentUser?.email,
+          "DELETE_JOB",
+          systemId,
+          `Deleted job "${jobName}" (${jobId})`
+        );
+      },
+    });
   }
 
   function deleteSystem() {
-    if (
-      currentUser?.email?.toLowerCase() === "admin@kriplanibuilders.com" &&
-      confirm(
-        "DANGER: Are you sure you want to PERMANENTLY delete this system?\n\nThis will remove all configurations, logs, and metadata for this machine from the dashboard.\n\nThe Agent on the machine will need to be re-run to re-register."
-      )
-    ) {
-      // Delete from all paths
-      remove(ref(db, `systems/${systemId}`));
-      remove(ref(db, `configurations/${systemId}`));
-      remove(ref(db, `control/${systemId}`));
-      remove(ref(db, `runtime_state/${systemId}`));
-      logAuditAction(
-        currentUser?.email,
-        "DELETE_SYSTEM",
-        systemId,
-        `Deleted entire system: ${systemMeta.hostname || systemId}`
-      );
+    if (currentUser?.email?.toLowerCase() === "admin@kriplanibuilders.com") {
+      openConfirmModal({
+        title: "DANGER: Delete System?",
+        message:
+          "Are you sure you want to PERMANENTLY delete this system?\n\nThis will remove all configurations, logs, and metadata for this machine from the dashboard.\n\nThe Agent on the machine will need to be re-run to re-register.",
+        isDanger: true,
+        onConfirm: () => {
+          // Delete from all paths
+          remove(ref(db, `systems/${systemId}`));
+          remove(ref(db, `configurations/${systemId}`));
+          remove(ref(db, `control/${systemId}`));
+          remove(ref(db, `runtime_state/${systemId}`));
+          logAuditAction(
+            currentUser?.email,
+            "DELETE_SYSTEM",
+            systemId,
+            `Deleted entire system: ${systemMeta.hostname || systemId}`
+          );
 
-      dispatch("back"); // Go back to fleet view
+          dispatch("back"); // Go back to fleet view
+        },
+      });
     }
   }
 
@@ -548,6 +583,36 @@
       <div class="modal-action">
         <form method="dialog">
           <button class="btn">Close</button>
+        </form>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+
+  <!-- CONFIRMATION MODAL -->
+  <dialog id="confirmation_modal" class="modal">
+    <div class="modal-box bg-base-100">
+      <h3
+        class="font-bold text-lg {confirmState.isDanger
+          ? 'text-error'
+          : 'text-base-content'}"
+      >
+        {confirmState.title}
+      </h3>
+      <p class="py-4 whitespace-pre-line">{confirmState.message}</p>
+      <div class="modal-action">
+        <form method="dialog">
+          <button class="btn btn-ghost">Cancel</button>
+          <button
+            class="btn {confirmState.isDanger
+              ? 'btn-error'
+              : 'btn-primary'} text-white ml-2"
+            on:click|preventDefault={handleConfirm}
+          >
+            Confirm
+          </button>
         </form>
       </div>
     </div>
