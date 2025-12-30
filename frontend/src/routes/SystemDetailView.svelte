@@ -389,7 +389,9 @@
               </td>
               <td>
                 <span class="badge badge-sm badge-ghost font-mono"
-                  >{job.schedule.type} @ {job.schedule.time}</span
+                  >{job.schedule.type} @ {job.schedule.type === "monthly"
+                    ? `Day ${job.schedule.day}, `
+                    : ""}{job.schedule.time}</span
                 >
               </td>
               <td
@@ -636,13 +638,53 @@
               class="label font-bold text-xs uppercase text-base-content/50"
               >Frequency</label
             >
-            <select
-              bind:value={jobForm.schedule.type}
-              class="select select-bordered w-full"
-            >
-              <option value="daily">Daily</option>
-              <option value="monthly">Monthly</option>
-            </select>
+            <div class="flex gap-2">
+              <select
+                bind:value={jobForm.schedule.type}
+                class="select select-bordered w-full flex-1"
+              >
+                <option value="daily">Daily</option>
+                <option value="monthly">Monthly</option>
+              </select>
+
+              {#if jobForm.schedule.type === "monthly"}
+                <div class="flex items-center gap-1 w-24 relative">
+                  <span class="text-xs">Day</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    bind:value={jobForm.schedule.day}
+                    class="input input-bordered w-full text-center px-1"
+                    placeholder="1"
+                  />
+                </div>
+              {/if}
+            </div>
+
+            {#if jobForm.schedule.type === "monthly" && jobForm.schedule.day > 28}
+              <div
+                role="alert"
+                class="alert alert-warning py-1 mt-2 text-xs flex"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="stroke-current shrink-0 h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  ><path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  /></svg
+                >
+                <span
+                  >Warning: Day {jobForm.schedule.day} may not exist in some months.
+                  Job will be skipped.</span
+                >
+              </div>
+            {/if}
           </div>
 
           <div class="form-control">

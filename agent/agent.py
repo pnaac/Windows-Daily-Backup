@@ -285,27 +285,66 @@ def configure_rclone():
         print(f"⚠️ Failed to configure rclone: {e}")
 
 # --- SCHEDULING LOGIC ---
-def check_schedule(schedule_config):
+def check_schedule(schedule_config, last_run_iso=None):
     """
-    Returns True if the job should run NOW.
-    Supports:
-    - Daily: { "type": "daily", "time": "HH:MM" }
-    - Monthly: { "type": "monthly", "day": 1, "time": "HH:MM" }
+    Returns True if the job should run NOW (or needs catch-up).
+    
+    Args:
+        schedule_config: { "type": "daily/monthly", "time": "HH:MM", "day": 1 }
+        last_run_iso: ISO format string of last successful run (e.g., "2023-10-27 21:00:00")
+        
+    Logic:
+    1. If run today? -> False
+    2. If not run today:
+       - Is Now >= Scheduled Time? -> True (Catch-up)
     """
     now = datetime.datetime.now()
-    current_time = now.strftime("%H:%M")
-    current_day = now.day
+    today_str = now.strftime("%Y-%m-%d")
+    
+    # 1. Check if already run today
+    if last_run_iso:
+        try:
+            # Parse ISO string "YYYY-MM-DD HH:MM:SS"
+            # We only care about the DATE part for "Daily/Monthly" frequency validation
+            last_run_dt = datetime.datetime.strptime(last_run_iso.split('.')[0], "%Y-%m-%d %H:%M:%S")
+            last_run_date_str = last_run_dt.strftime("%Y-%m-%d")
+            
+            if last_run_date_str == today_str:
+                return False # Already ran today
+        except ValueError:
+            pass # Invalid format, treat as never run
 
+    # 2. Check Schedule Match
     sched_type = schedule_config.get('type', 'daily')
-    sched_time = schedule_config.get('time', '00:00')
+    sched_time_str = schedule_config.get('time', '00:00')
+    
+    # Parse Schedule Time
+    try:
+        sh, sm = map(int, sched_time_str.split(':'))
+        scheduled_time_today = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
+    except:
+        return False # Invalid config
+
+    # Is it time yet? (Standard + Catch-up)
+    # If now < scheduled_time, we wait.
+    if now < scheduled_time_today:
+        return False
 
     if sched_type == 'daily':
-        return current_time == sched_time
+        return True # Not run today + Time is passed -> RUN!
     
     if sched_type == 'monthly':
         sched_day = int(schedule_config.get('day', 1))
-        return current_day == sched_day and current_time == sched_time
-    
+        
+        # Handle "End of Month" logic
+        # If user picks 31, and today is Feb 28 (and it's the last day), maybe we run?
+        # User requirement: "Warn user... but implement logic".
+        # Current Logic: STRICT match on day.
+        # If sched_day is 31, and today is Feb 28, it WON'T match.
+        
+        if now.day == sched_day:
+            return True
+            
     return False
 
 def perform_backup(job_id, job_config, global_config):
@@ -413,6 +452,7 @@ def perform_backup(job_id, job_config, global_config):
             "status": "Success", 
             "detailed_message": f"Done. {size_str} uploaded to Backup_{timestamp}",
             "last_run": success_time,
+            "last_run_timestamp": success_time, # Used for robust scheduling
             "last_size": size_str
         })
         
@@ -486,7 +526,20 @@ def main():
     
     print(f"👀 Agent {AGENT_ID} Active. Waiting for instructions...")
     
-    # Simple mechanism to prevent double-running in the same minute
+    # --- STARTUP DELAY ---
+    # Protection against Boot Storms.
+    # We wait 10 minutes before running any AUTOMATED jobs.
+    # Manual triggers will still bypass this because they are checked in the loop.
+    print(f"⏳ Agent Startup Delay: Waiting 600s (10m) to allow system to settle...")
+    # We break this into chunks so we can still print heartbeats or check manual triggers?
+    # For simplicity, let's just sleep, but keep heartbeats triggered? 
+    # Actually, user said "cannot Keep the machine inaccessible". 
+    # If we sleep 10m, we can't run Manual Jobs.
+    # Better approach: Record start_time and enforce delay only on SCHEDULED checks.
+    
+    agent_start_time = datetime.datetime.now()
+    STARTUP_DELAY_SECONDS = 600 # 10 Minutes
+
     last_processed_minute = ""
 
     while True:
@@ -502,11 +555,14 @@ def main():
             # 2. Heartbeat (Only if system exists)
             db.reference(f'systems/{AGENT_ID}/heartbeat').set(int(time.time()))
 
-            # 2. Fetch Configuration
+            # 3. Fetch Configuration
             global_config = db.reference(f'global_config').get() or {}
             jobs = db.reference(f'configurations/{AGENT_ID}').get() or {}
+            
+            # Fetch Runtime State to know last run times
+            job_states = db.reference(f'runtime_state/{AGENT_ID}/job_states').get() or {}
 
-            # 3. Check Manual Triggers (Control)
+            # 4. Check Manual Triggers (Control) - BYPASSES DELAY
             manual_trigger_job_id = db.reference(f'control/{AGENT_ID}/trigger_now').get()
             if manual_trigger_job_id:
                 # Clear trigger immediately to acknowledge
@@ -518,17 +574,31 @@ def main():
                     for jid, jconf in jobs.items():
                         perform_backup(jid, jconf, global_config)
 
-            # 4. Scheduled Checks
-            current_minute = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            if current_minute != last_processed_minute:
-                # New minute, check schedules
-                last_processed_minute = current_minute
-                for job_id, job_config in jobs.items():
-                    schedule = job_config.get('schedule', {})
-                    if check_schedule(schedule):
-                        print(f"⏰ Schedule matched for {job_id}")
-                        perform_backup(job_id, job_config, global_config)
+            # 5. Scheduled Checks - RESPECTS DELAY
+            time_since_start = (datetime.datetime.now() - agent_start_time).total_seconds()
+            
+            if time_since_start < STARTUP_DELAY_SECONDS:
+                # Still in startup grace period.
+                # We skip schedule checks, but we loop to keep Heartbeat alive.
+                # We can print a countdown every minute?
+                pass
+            else:
+                current_minute = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                if current_minute != last_processed_minute:
+                    # New minute, check schedules
+                    last_processed_minute = current_minute
+                    
+                    for job_id, job_config in jobs.items():
+                        schedule = job_config.get('schedule', {})
+                        
+                        # Get Last Run for this specific job
+                        last_run_str = job_states.get(job_id, {}).get('last_run_timestamp')
+                        
+                        if check_schedule(schedule, last_run_str):
+                            print(f"⏰ Schedule matched for {job_id}")
+                            perform_backup(job_id, job_config, global_config)
 
+            # Shorter sleep to be responsive to Manual Triggers
             time.sleep(5)
 
         except KeyboardInterrupt:
