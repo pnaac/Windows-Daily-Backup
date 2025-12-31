@@ -174,24 +174,23 @@
             </button>
           </div>
         </div>
+
+        <!-- Footer (Relative on Mobile, Absolute on Desktop) -->
         <a
           href="https://pnaac.com"
           target="_blank"
-          class="absolute bottom-6 right-8 text-right opacity-40 hover:opacity-100 transition-opacity duration-300 group z-10"
+          class="mt-12 w-full text-center lg:mt-0 lg:w-auto lg:absolute lg:bottom-6 lg:right-8 lg:text-right opacity-40 hover:opacity-100 transition-opacity duration-300 group z-10"
         >
           <p
             class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-0.5 group-hover:text-primary transition-colors"
           >
-            Developed & Maintained By
+            Created By
           </p>
-          <div class="flex items-center justify-end gap-1.5">
+          <div class="flex items-center justify-center lg:justify-end gap-1.5">
             <span class="text-xs font-black text-slate-800 tracking-wide">
               PNAAC IT LABS
             </span>
-            <span
-              class="px-1 py-px rounded bg-slate-100 text-[9px] font-bold text-slate-500 border border-slate-200"
-              >PVT LTD</span
-            >
+            <!-- User asked to simplify, removing PVT LTD chip to clean up -->
           </div>
         </a>
       </div>
