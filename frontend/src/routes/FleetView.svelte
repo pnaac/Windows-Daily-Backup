@@ -112,7 +112,7 @@
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
     <!-- New System Card (Placeholder) -->
     <div
-      class="border border-dashed border-base-300 rounded-xl flex items-center justify-center p-8 bg-base-100/50 hover:bg-base-100 transition-all hover:border-primary/50 group cursor-pointer h-[180px]"
+      class="border border-dashed border-base-300 rounded-xl flex items-center justify-center p-8 bg-base-100/50 hover:border-primary/50 group h-[180px]"
     >
       <div
         class="text-center opacity-60 group-hover:opacity-100 transition-opacity"
@@ -131,9 +131,8 @@
 
     <!-- System Cards -->
     {#each filteredFleet as system (system.id)}
-      <!-- svelte-ignore a11y-click-events-have-key-events -->
-      <div
-        class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary/40 transition-all duration-200 cursor-pointer group"
+      <button
+        class="card w-full text-left bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary/40 transition-all duration-200 cursor-pointer group"
         on:click={() => dispatch("select", system.id)}
       >
         <div class="card-body p-5">
@@ -233,7 +232,7 @@
             >
           </div>
         </div>
-      </div>
+      </button>
     {/each}
   </div>
   <!-- CONFIRMATION MODAL -->

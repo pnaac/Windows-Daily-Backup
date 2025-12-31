@@ -356,6 +356,24 @@
             >
           </li>
         {/if}
+
+        <!-- Sidebar Footer -->
+        <li class="mt-auto">
+          <div
+            class="px-4 py-4 text-center block hover:bg-transparent cursor-default"
+          >
+            <p
+              class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-1"
+            >
+              Created By
+            </p>
+            <div class="flex items-center justify-center gap-1.5">
+              <span class="text-xs font-black text-slate-800 tracking-wide">
+                PNAAC IT LABS
+              </span>
+            </div>
+          </div>
+        </li>
       </ul>
     </div>
   </div>
