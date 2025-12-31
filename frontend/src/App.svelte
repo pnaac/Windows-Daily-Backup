@@ -161,7 +161,7 @@
 
           <div class="space-y-6">
             <button
-              class="btn btn-block h-16 text-lg font-bold text-white border-0 bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-900/20 rounded-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+              class="btn btn-block h-16 text-lg font-bold text-white border-0 bg-[#1e293b] hover:bg-slate-800 shadow-xl shadow-[#1e293b]/20 rounded-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
               on:click={login}
             >
               <svg class="w-6 h-6" viewBox="0 0 24 24">
