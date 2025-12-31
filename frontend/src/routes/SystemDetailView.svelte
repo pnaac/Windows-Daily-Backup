@@ -17,6 +17,8 @@
   // @ts-ignore
   $: jobStates = $backupStore.runtime_state[systemId]?.job_states || {};
 
+  $: kpiTotalJobs = Object.keys(jobs).length;
+
   // Local State
   let isEditing = false;
   let editingJobId = null;
@@ -469,7 +471,7 @@
 
             <button
               class="btn btn-sm btn-ghost border border-base-200"
-              on:click={() => editJob(jobId)}
+              on:click={() => openJobEditor(jobId)}
             >
               Edit
             </button>
