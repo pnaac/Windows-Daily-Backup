@@ -119,7 +119,7 @@
           <h1
             class="text-3xl lg:text-5xl font-bold text-white leading-tight mb-4 lg:mb-6"
           >
-            Kriplani<br />Consumables.
+            Kriplani<br />Backup System.
           </h1>
           <p class="text-slate-400 text-sm lg:text-lg">
             Next-Gen Enterprise Infrastructure
@@ -161,7 +161,7 @@
 
           <div class="space-y-6">
             <button
-              class="btn btn-block h-16 text-lg font-bold !text-white border-0 bg-secondary hover:bg-secondary/80 shadow-xl shadow-secondary/25 rounded-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+              class="btn btn-block h-16 text-lg font-bold text-white border-0 bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-900/20 rounded-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-[0.99]"
               on:click={login}
             >
               <svg class="w-6 h-6" viewBox="0 0 24 24">

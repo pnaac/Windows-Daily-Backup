@@ -181,9 +181,14 @@
 
 <div class="max-w-7xl mx-auto px-4">
   <!-- KPI Stats Grid -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+  <!-- KPI Stats Grid (Mobile: Horizontal Scroll, Desktop: Grid) -->
+  <div
+    class="flex overflow-x-auto snap-x snap-mandatory gap-4 mb-6 pb-4 md:grid md:grid-cols-3 md:gap-6 md:pb-0 md:overflow-visible no-scrollbar -mx-4 px-4 md:mx-0 md:px-0"
+  >
     <!-- Stat 1 -->
-    <div class="stats shadow bg-base-100 border border-base-200">
+    <div
+      class="stats shadow bg-base-100 border border-base-200 min-w-[85vw] md:min-w-0 snap-center"
+    >
       <div class="stat">
         <div class="stat-figure text-primary">
           <svg
@@ -210,7 +215,9 @@
     </div>
 
     <!-- Stat 2 -->
-    <div class="stats shadow bg-base-100 border border-base-200">
+    <div
+      class="stats shadow bg-base-100 border border-base-200 min-w-[85vw] md:min-w-0 snap-center"
+    >
       <div class="stat">
         <div class="stat-figure text-secondary">
           <svg
@@ -239,7 +246,9 @@
     </div>
 
     <!-- Stat 3 -->
-    <div class="stats shadow bg-base-100 border border-base-200">
+    <div
+      class="stats shadow bg-base-100 border border-base-200 min-w-[85vw] md:min-w-0 snap-center"
+    >
       <div class="stat">
         <div class="stat-figure text-success">
           <svg
@@ -390,9 +399,100 @@
     </div>
   </div>
 
-  <!-- Configuration Table -->
+  <!-- Mobile Job Cards (App-like View) -->
+  <div class="md:hidden space-y-4 mb-8">
+    {#each Object.entries(jobs) as [jobId, job] (jobId)}
+      {@const state = jobStates[jobId] || {}}
+      <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-body p-4">
+          <!-- Header: Name + Status -->
+          <div class="flex justify-between items-start mb-2">
+            <h3
+              class="font-bold text-lg text-base-content flex items-center gap-2"
+            >
+              <div
+                class="w-2.5 h-2.5 rounded-full {state.status === 'Running'
+                  ? 'bg-indigo-500 animate-pulse'
+                  : 'bg-transparent'}"
+              ></div>
+              {job.name}
+            </h3>
+            <span
+              class="badge {state.status === 'Success'
+                ? 'badge-success text-white'
+                : state.status === 'Error'
+                  ? 'badge-error text-white'
+                  : 'badge-ghost'}"
+            >
+              {state.status || "Pending"}
+            </span>
+          </div>
+
+          <!-- Schedule Badge -->
+          <div class="mb-3">
+            <span class="badge badge-sm badge-outline font-mono opacity-70">
+              {job.schedule.type} @ {job.schedule.type === "monthly"
+                ? `Day ${job.schedule.day}, `
+                : ""}{job.schedule.time}
+            </span>
+          </div>
+
+          <!-- Metdata Grid -->
+          <div
+            class="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-base-content/60 mb-4"
+          >
+            <div>Last Run:</div>
+            <div class="font-mono text-base-content">
+              {state.last_run || "Never"}
+            </div>
+
+            <div>Data Moved:</div>
+            <div class="font-mono text-base-content">
+              {state.last_size || "-"}
+            </div>
+
+            <div>Source:</div>
+            <div class="font-mono truncate" title={job.source_path}>
+              {job.source_path}
+            </div>
+          </div>
+
+          <!-- Actions Footer -->
+          <div class="flex gap-2 pt-3 border-t border-base-100">
+            <button
+              class="btn btn-sm btn-primary flex-1 text-white shadow-sm shadow-primary/30"
+              on:click={() => triggerJob(jobId)}
+              disabled={state.status === "Running"}
+            >
+              Build
+            </button>
+
+            <button
+              class="btn btn-sm btn-ghost border border-base-200"
+              on:click={() => editJob(jobId)}
+            >
+              Edit
+            </button>
+
+            {#if currentUser?.email
+              ?.trim()
+              .toLowerCase() === "admin@kriplanibuilders.com"}
+              <button
+                class="btn btn-sm btn-ghost text-error"
+                on:click={() => deleteJob(jobId)}
+              >
+                {@html Icons.trash}
+              </button>
+            {/if}
+          </div>
+        </div>
+      </div>
+    {/each}
+  </div>
+
+  <!-- Configuration Table (Desktop Only) -->
   <div
-    class="bg-base-100 border border-base-200 rounded-xl shadow-sm overflow-hidden"
+    class="hidden md:block bg-base-100 border border-base-200 rounded-xl shadow-sm overflow-hidden"
   >
     <div class="overflow-x-auto">
       <table class="table table-zebra table-lg font-sans">
