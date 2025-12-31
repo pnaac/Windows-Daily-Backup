@@ -179,6 +179,14 @@
     // @ts-ignore
     document.getElementById("error_modal").showModal();
   }
+
+  function handleDayInput(e) {
+    let val = parseInt(e.target.value);
+    if (isNaN(val)) return;
+    if (val < 1) jobForm.schedule.day = 1;
+    else if (val > 31) jobForm.schedule.day = 31;
+    else jobForm.schedule.day = val;
+  }
 </script>
 
 <div class="max-w-7xl mx-auto px-4">
@@ -824,6 +832,7 @@
                     min="1"
                     max="31"
                     bind:value={jobForm.schedule.day}
+                    on:input={handleDayInput}
                     class="input input-bordered w-full text-center px-1"
                     placeholder="1"
                   />
