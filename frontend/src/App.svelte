@@ -368,7 +368,7 @@
               Created By
             </p>
             <div class="flex items-center justify-center gap-1.5">
-              <span class="text-xs font-black text-slate-800 tracking-wide">
+              <span class="text-xs font-black text-slate-400 tracking-wide">
                 PNAAC IT LABS
               </span>
             </div>

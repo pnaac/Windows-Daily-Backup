@@ -131,9 +131,13 @@
 
     <!-- System Cards -->
     {#each filteredFleet as system (system.id)}
-      <button
+      <div
+        role="button"
+        tabindex="0"
         class="card w-full text-left bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary/40 transition-all duration-200 cursor-pointer group"
         on:click={() => dispatch("select", system.id)}
+        on:keydown={(e) =>
+          (e.key === "Enter" || e.key === " ") && dispatch("select", system.id)}
       >
         <div class="card-body p-5">
           <!-- Header -->
@@ -232,7 +236,7 @@
             >
           </div>
         </div>
-      </button>
+      </div>
     {/each}
   </div>
   <!-- CONFIRMATION MODAL -->
