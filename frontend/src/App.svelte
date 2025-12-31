@@ -18,11 +18,40 @@
   let loadingAuth = true;
   let currentView = "fleet"; // 'fleet' or 'system'
   let selectedSystemId = null;
-  let theme = localStorage.getItem("theme") || "kriplani_light";
 
-  // Auth Listener
+  // UI State
+  let isSidebarCollapsed = localStorage.getItem("sidebar_collapsed") === "true";
+
+  // Theme State: 'system' | 'kriplani_light' | 'kriplani_dark'
+  let themePreference = localStorage.getItem("theme_preference") || "system";
+  let activeTheme = "kriplani_light"; // The actual applied theme (resolved from system)
+
+  function resolveSystemTheme() {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "kriplani_dark"
+      : "kriplani_light";
+  }
+
+  function applyTheme() {
+    if (themePreference === "system") {
+      activeTheme = resolveSystemTheme();
+    } else {
+      activeTheme = themePreference;
+    }
+    document.documentElement.setAttribute("data-theme", activeTheme);
+  }
+
+  // Auth & Theme Listener
   onMount(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    applyTheme();
+
+    // Listen for System Theme Changes
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      if (themePreference === "system") applyTheme();
+    };
+    mediaQuery.addEventListener("change", handleChange);
+
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       user = u;
       loadingAuth = false;
@@ -30,7 +59,10 @@
         backupStore.init(user.uid);
       }
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      mediaQuery.removeEventListener("change", handleChange);
+    };
   });
 
   // Actions
@@ -49,9 +81,19 @@
   }
 
   function toggleTheme() {
-    theme = theme === "kriplani_light" ? "kriplani_dark" : "kriplani_light";
-    localStorage.setItem("theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
+    // Cycle: System -> Light -> Dark -> System
+    if (themePreference === "system") themePreference = "kriplani_light";
+    else if (themePreference === "kriplani_light")
+      themePreference = "kriplani_dark";
+    else themePreference = "system";
+
+    localStorage.setItem("theme_preference", themePreference);
+    applyTheme();
+  }
+
+  function toggleSidebar() {
+    isSidebarCollapsed = !isSidebarCollapsed;
+    localStorage.setItem("sidebar_collapsed", String(isSidebarCollapsed));
   }
 
   // Routing
@@ -197,59 +239,219 @@
     </div>
   </div>
 {:else}
-  <!-- App Shell -->
-  <div class="drawer lg:drawer-open font-sans bg-base-200 min-h-screen">
-    <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
-    <div class="drawer-content flex flex-col">
-      <!-- Header -->
+  <!-- App Shell (Custom Flex Layout) -->
+  <div class="flex h-screen overflow-hidden bg-base-200 font-sans">
+    <!-- Desktop Sidebar (Hidden on Mobile) -->
+    <aside
+      class="hidden lg:flex flex-col bg-base-100 border-r border-base-300 transition-all duration-300
+      {isSidebarCollapsed ? 'w-20' : 'w-72'}"
+    >
+      <!-- Sidebar Header -->
       <div
-        class="navbar bg-base-100 border-b border-base-300 px-6 sticky top-0 z-30"
+        class="h-16 flex items-center justify-between px-4 border-b border-base-300/50"
       >
-        <div class="flex-none lg:hidden">
-          <label for="my-drawer-2" class="btn btn-square btn-ghost">
+        {#if !isSidebarCollapsed}
+          <div
+            class="flex items-center gap-3 overflow-hidden whitespace-nowrap"
+          >
+            <div
+              class="w-8 h-8 rounded-lg bg-primary flex-shrink-0 flex items-center justify-center text-white shadow-lg shadow-primary/40"
+            >
+              {@html Icons.shield}
+            </div>
+            <div>
+              <div class="font-bold text-lg leading-tight">
+                Backup<span class="text-primary">Control</span>
+              </div>
+            </div>
+          </div>
+        {:else}
+          <div class="w-full flex justify-center">
+            <div
+              class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/40"
+            >
+              {@html Icons.shield}
+            </div>
+          </div>
+        {/if}
+
+        <button
+          class="btn btn-xs btn-ghost btn-square {isSidebarCollapsed
+            ? 'hidden'
+            : ''}"
+          on:click={toggleSidebar}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg
+          >
+        </button>
+      </div>
+
+      <!-- Collapsed Toggle (if collapsed, show it centered below header) -->
+      {#if isSidebarCollapsed}
+        <div class="flex justify-center py-2 border-b border-base-300">
+          <button
+            class="btn btn-xs btn-ghost btn-square rotate-180"
+            on:click={toggleSidebar}
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              fill="none"
+              class="w-4 h-4"
               viewBox="0 0 24 24"
-              class="inline-block w-6 h-6 stroke-current"
-              ><path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 6h16M4 12h16M4 18h16"
-              ></path></svg
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg
             >
-          </label>
+          </button>
         </div>
-        <div class="flex-1">
-          {#if currentView === "system"}
-            <div class="text-sm breadcrumbs">
-              <ul>
-                <li>
-                  <a on:click={goBack} class="opacity-60 hover:opacity-100"
-                    >Fleet</a
-                  >
-                </li>
-                <li class="font-semibold text-primary">System Details</li>
-              </ul>
+      {/if}
+
+      <!-- Menu Items -->
+      <ul class="flex-1 overflow-y-auto py-4 space-y-1">
+        <li>
+          <a
+            class="flex items-center gap-3 px-4 py-3 mx-2 rounded-lg transition-colors
+               {currentView === 'fleet'
+              ? 'bg-primary/10 text-primary font-medium'
+              : 'text-base-content/70 hover:bg-base-200'}
+               {isSidebarCollapsed ? 'justify-center px-2' : ''}"
+            on:click={goBack}
+            title="Dashboard"
+          >
+            <span class="w-5 h-5">{@html Icons.dashboard}</span>
+            {#if !isSidebarCollapsed}<span>Dashboard</span>{/if}
+          </a>
+        </li>
+
+        <li>
+          <a
+            class="flex items-center gap-3 px-4 py-3 mx-2 rounded-lg transition-colors
+               {currentView === 'audit'
+              ? 'bg-primary/10 text-primary font-medium'
+              : 'text-base-content/70 hover:bg-base-200'}
+               {isSidebarCollapsed ? 'justify-center px-2' : ''}"
+            on:click={() => {
+              currentView = "audit";
+              selectedSystemId = null;
+            }}
+            title="Audit Logs"
+          >
+            <span class="w-5 h-5">{@html Icons.box}</span>
+            {#if !isSidebarCollapsed}<span>Audit Logs</span>{/if}
+          </a>
+        </li>
+
+        {#if !isSidebarCollapsed}
+          <div class="divider my-4 mx-4"></div>
+          {#if user.email === "admin@kriplanibuilders.com"}
+            <div
+              class="px-6 text-xs font-bold opacity-40 uppercase tracking-widest mb-2"
+            >
+              Platform
             </div>
-          {:else}
-            <h1 class="font-bold text-lg text-base-content/80">
-              Fleet Overview
-            </h1>
+            <li>
+              <a
+                href="https://firebase.google.com"
+                target="_blank"
+                class="flex items-center gap-3 px-4 py-3 mx-2 rounded-lg text-base-content/70 hover:bg-base-200"
+              >
+                <span class="w-5 h-5 flex justify-center">🔥</span>
+                <span>Firebase</span>
+              </a>
+            </li>
           {/if}
+        {/if}
+      </ul>
+
+      <!-- Sidebar Footer -->
+      <div class="p-4 border-t border-base-300">
+        {#if !isSidebarCollapsed}
+          <div class="text-center">
+            <p
+              class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-1"
+            >
+              Created By
+            </p>
+            <span class="text-xs font-black text-slate-400 tracking-wide"
+              >PNAAC IT LABS</span
+            >
+          </div>
+        {:else}
+          <div class="flex justify-center text-xs font-bold text-slate-300">
+            P
+          </div>
+        {/if}
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col min-w-0 h-full relative">
+      <!-- Top Navbar (Mobile: Branding + Theme | Desktop: Breadcrumbs + Theme) -->
+      <header
+        class="h-16 flex items-center justify-between px-6 bg-base-100/80 backdrop-blur border-b border-base-300 z-20 sticky top-0"
+      >
+        <!-- Left: Branding (Mobile) or Breadcrumbs (Desktop) -->
+        <div class="flex items-center gap-2">
+          <!-- Mobile Brand -->
+          <div class="lg:hidden flex items-center gap-2">
+            <div
+              class="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/30"
+            >
+              {@html Icons.shield}
+            </div>
+            <span class="font-bold text-lg"
+              >Backup<span class="text-primary">Control</span></span
+            >
+          </div>
+
+          <!-- Desktop Breadcrumbs -->
+          <div class="hidden lg:block">
+            {#if currentView === "system"}
+              <div class="text-sm breadcrumbs">
+                <ul>
+                  <li>
+                    <a on:click={goBack} class="opacity-60 hover:opacity-100"
+                      >Fleet</a
+                    >
+                  </li>
+                  <li class="font-semibold text-primary">System Details</li>
+                </ul>
+              </div>
+            {:else if currentView === "audit"}
+              <h1 class="font-bold text-lg text-base-content/80">Audit Logs</h1>
+            {:else}
+              <h1 class="font-bold text-lg text-base-content/80">
+                Fleet Overview
+              </h1>
+            {/if}
+          </div>
         </div>
-        <div class="flex-none gap-2">
+
+        <!-- Right: Actions -->
+        <div class="flex items-center gap-2">
           <button
             class="btn btn-sm btn-circle btn-ghost"
             on:click={toggleTheme}
+            title="Switch Theme"
           >
-            {#if theme === "kriplani_light"}
-              🌙
-            {:else}
+            {#if themePreference === "system"}
+              🖥️
+            {:else if themePreference === "kriplani_light"}
               ☀️
+            {:else}
+              🌙
             {/if}
           </button>
+
           <div class="dropdown dropdown-end">
             <label
               tabindex="0"
@@ -272,10 +474,10 @@
             </ul>
           </div>
         </div>
-      </div>
+      </header>
 
-      <!-- Main Content -->
-      <main class="flex-1 p-6 overflow-y-auto">
+      <!-- Scrollable Content -->
+      <main class="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-6">
         {#if currentView === "fleet"}
           <FleetView on:select={handleSelectSystem} currentUser={user} />
         {:else if currentView === "system"}
@@ -284,97 +486,45 @@
             currentUser={user}
             on:back={goBack}
           />
+        {:else if currentView === "audit"}
+          <AuditLogsView />
         {/if}
       </main>
     </div>
 
-    <!-- Sidebar -->
-    <div class="drawer-side z-40">
-      <label for="my-drawer-2" class="drawer-overlay"></label>
-      <ul
-        class="menu p-4 w-72 min-h-full bg-base-100 border-r border-base-300 text-base-content"
+    <!-- Mobile Bottom Navigation -->
+    <div
+      class="btm-nav lg:hidden z-50 border-t border-base-200 bg-base-100/90 backdrop-blur safe-area-bottom"
+    >
+      <button
+        class={currentView === "fleet" || currentView === "system"
+          ? "active text-primary"
+          : "text-base-content/50"}
+        on:click={goBack}
       >
-        <!-- Sidebar Header -->
-        <li class="mb-6">
-          <div class="flex items-center gap-3 px-2">
-            <div
-              class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/40"
-            >
-              {@html Icons.shield}
-            </div>
-            <div>
-              <div class="font-bold text-lg leading-tight">
-                Backup<span class="text-primary">Control</span>
-              </div>
-              <div
-                class="text-[10px] uppercase tracking-widest opacity-50 font-semibold"
-              >
-                Enterprise
-              </div>
-            </div>
-          </div>
-        </li>
+        <span class="w-5 h-5">{@html Icons.dashboard}</span>
+        <span class="btm-nav-label text-xs">Home</span>
+      </button>
 
-        <!-- Menu Items -->
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
-        <!-- svelte-ignore a11y-missing-attribute -->
-        <li class="mb-1">
-          <a
-            class:active={currentView === "fleet"}
-            on:click={goBack}
-            class="font-medium rounded-lg">{@html Icons.dashboard} Dashboard</a
-          >
-        </li>
-        <li>
-          <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <!-- svelte-ignore a11y-no-static-element-interactions -->
-          <!-- svelte-ignore a11y-missing-attribute -->
-          <a
-            class:active={currentView === "audit"}
-            on:click={() => {
-              currentView = "audit";
-              selectedSystemId = null;
-            }}
-            class="font-medium rounded-lg">{@html Icons.box} Audit Logs</a
-          >
-        </li>
+      <button
+        class={currentView === "audit"
+          ? "active text-primary"
+          : "text-base-content/50"}
+        on:click={() => {
+          currentView = "audit";
+          selectedSystemId = null;
+        }}
+      >
+        <span class="w-5 h-5">{@html Icons.box}</span>
+        <span class="btm-nav-label text-xs">Logs</span>
+      </button>
 
-        <div class="divider my-4"></div>
-
-        {#if user.email === "admin@kriplanibuilders.com"}
-          <div
-            class="px-4 text-xs font-bold opacity-40 uppercase tracking-widest mb-2"
-          >
-            Platform
-          </div>
-          <li>
-            <a
-              href="https://firebase.google.com"
-              target="_blank"
-              class="font-medium rounded-lg opacity-70">Firebase Console</a
-            >
-          </li>
-        {/if}
-
-        <!-- Sidebar Footer -->
-        <li class="mt-auto">
-          <div
-            class="px-4 py-4 text-center block hover:bg-transparent cursor-default"
-          >
-            <p
-              class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-1"
-            >
-              Created By
-            </p>
-            <div class="flex items-center justify-center gap-1.5">
-              <span class="text-xs font-black text-slate-400 tracking-wide">
-                PNAAC IT LABS
-              </span>
-            </div>
-          </div>
-        </li>
-      </ul>
+      <button class="text-base-content/50" on:click={toggleTheme}>
+        <span class="w-5 h-5 flex justify-center items-center">
+          {#if themePreference === "system"}🖥️{:else if themePreference === "kriplani_light"}☀️{:else}🌙{/if}
+        </span>
+        <span class="btm-nav-label text-xs">Theme</span>
+      </button>
     </div>
   </div>
 {/if}
