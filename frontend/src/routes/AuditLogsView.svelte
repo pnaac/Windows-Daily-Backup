@@ -1,32 +1,130 @@
 <script>
   import { auditLogs, backupStore } from "../stores/backupStore";
-  import { fade } from "svelte/transition";
+  import { fade, slide } from "svelte/transition";
 
-  // Subscribe to the derived store
-  // $auditLogs is an array sorted by timestamp DESC
+  let searchQuery = "";
+
+  // Filter logs based on search query
+  $: filteredLogs = $auditLogs.filter((log) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      (log.user && log.user.toLowerCase().includes(query)) ||
+      (log.action && log.action.toLowerCase().includes(query)) ||
+      (log.target && log.target.toLowerCase().includes(query)) ||
+      (log.details && JSON.stringify(log.details).toLowerCase().includes(query))
+    );
+  });
+
+  function exportToCSV() {
+    if (filteredLogs.length === 0) return;
+
+    const headers = ["Timestamp", "User", "Action", "Target", "Details"];
+    const csvContent = [
+      headers.join(","),
+      ...filteredLogs.map((log) => {
+        const row = [
+          new Date(log.timestamp).toISOString(),
+          log.user || "Unknown",
+          log.action,
+          log.target,
+          `"${JSON.stringify(log.details || {}).replace(/"/g, '""')}"`, // Escape quotes
+        ];
+        return row.join(",");
+      }),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit_logs_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
 </script>
 
-<div class="h-full flex flex-col" in:fade={{ duration: 200 }}>
+<div class="h-full flex flex-col p-2 md:p-6" in:fade={{ duration: 200 }}>
   <!-- Header -->
-  <header class="flex justify-between items-center mb-8">
+  <header
+    class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"
+  >
     <div>
-      <h1
-        class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary"
-      >
-        Audit Log
-      </h1>
-      <p class="text-slate-400 mt-1">
+      <h1 class="text-3xl font-bold text-base-content">Audit Log</h1>
+      <p class="text-base-content/60 mt-1">
         Track administrative actions and system changes
       </p>
     </div>
 
-    <div class="stats bg-slate-800 shadow text-slate-200">
-      <div class="stat place-items-center p-4">
-        <div class="stat-title text-slate-400 text-xs uppercase tracking-wider">
-          Total Events
+    <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+      <!-- Search Input -->
+      <div class="join w-full md:w-auto">
+        <div class="relative w-full md:w-64">
+          <input
+            type="text"
+            placeholder="Search logs..."
+            bind:value={searchQuery}
+            class="input input-bordered input-sm w-full pr-10 bg-base-100 placeholder:text-base-content/40"
+          />
+          <div
+            class="absolute inset-y-0 right-3 flex items-center pointer-events-none"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 text-base-content/40"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
         </div>
-        <div class="stat-value text-secondary text-2xl">
-          {$auditLogs.length}
+      </div>
+
+      <!-- Export Button -->
+      <button
+        class="btn btn-sm btn-outline gap-2"
+        on:click={exportToCSV}
+        disabled={filteredLogs.length === 0}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+          />
+        </svg>
+        Export CSV
+      </button>
+
+      <!-- Stats Card -->
+      <div
+        class="stats bg-base-200 shadow-sm text-base-content border border-base-300 hidden lg:inline-grid"
+      >
+        <div class="stat place-items-center py-1 px-4">
+          <div
+            class="stat-title text-base-content/60 text-xs uppercase tracking-wider"
+          >
+            Total Events
+          </div>
+          <div class="stat-value text-primary text-xl">
+            {$auditLogs.length}
+          </div>
         </div>
       </div>
     </div>
@@ -34,18 +132,17 @@
 
   <!-- Content (Data Grid) -->
   <div
-    class="flex-1 overflow-auto bg-slate-800/50 rounded-2xl border border-slate-700/50 backdrop-blur-sm shadow-xl p-1"
+    class="flex-1 overflow-hidden bg-base-100 rounded-2xl border border-base-300 shadow-sm flex flex-col"
   >
     {#if $backupStore.loading}
       <div class="h-full flex items-center justify-center">
         <span class="loading loading-ring loading-lg text-primary"></span>
       </div>
-    {:else if $auditLogs.length === 0}
+    {:else if filteredLogs.length === 0}
       <div
-        class="h-full flex flex-col items-center justify-center text-slate-500"
+        class="h-full flex flex-col items-center justify-center text-base-content/50"
       >
         <div class="w-16 h-16 mb-4 opacity-50">
-          <!-- Simple Document Text Icon -->
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -61,77 +158,95 @@
             />
           </svg>
         </div>
-        <p>No audit logs found.</p>
+        <p>
+          {searchQuery ? "No logs match your search" : "No audit logs found"}
+        </p>
       </div>
     {:else}
-      <table class="table w-full text-left">
-        <thead
-          class="text-xs text-slate-400 uppercase bg-slate-900/50 sticky top-0 z-10"
-        >
-          <tr>
-            <th class="py-4 px-6 font-medium tracking-wider">Time</th>
-            <th class="py-4 px-6 font-medium tracking-wider">User</th>
-            <th class="py-4 px-6 font-medium tracking-wider">Action</th>
-            <th class="py-4 px-6 font-medium tracking-wider">Target</th>
-            <th class="py-4 px-6 font-medium tracking-wider">Details</th>
-          </tr>
-        </thead>
-        <tbody class="text-sm divide-y divide-slate-700/50">
-          {#each $auditLogs as log (log.timestamp)}
-            <tr class="hover:bg-white/5 transition-colors">
-              <td class="py-4 px-6 whitespace-nowrap text-slate-400 font-mono">
-                {new Date(log.timestamp).toLocaleString()}
-              </td>
-              <td class="py-4 px-6 font-medium text-slate-200">
-                <div class="flex items-center gap-2">
-                  <div class="avatar placeholder">
-                    <div class="bg-indigo-900 text-indigo-200 rounded-full w-6">
-                      <span class="text-xs"
-                        >{log.user
-                          ? log.user.charAt(0).toUpperCase()
-                          : "?"}</span
-                      >
-                    </div>
-                  </div>
-                  {log.user || "Unknown"}
-                </div>
-              </td>
-              <td class="py-4 px-6">
-                <!-- Badge color coding -->
-                {#if log.action.includes("DELETE")}
-                  <span
-                    class="badge badge-error badge-sm bg-red-500/20 text-red-300 border-0 font-bold"
-                    >{log.action}</span
-                  >
-                {:else if log.action.includes("CREATE")}
-                  <span
-                    class="badge badge-success badge-sm bg-emerald-500/20 text-emerald-300 border-0 font-bold"
-                    >{log.action}</span
-                  >
-                {:else if log.action.includes("UPDATE")}
-                  <span
-                    class="badge badge-warning badge-sm bg-amber-500/20 text-amber-300 border-0 font-bold"
-                    >{log.action}</span
-                  >
-                {:else}
-                  <span class="badge badge-ghost badge-sm">{log.action}</span>
-                {/if}
-              </td>
-              <td class="py-4 px-6 text-slate-300 font-mono text-xs">
-                {log.target}
-              </td>
-              <td
-                class="py-4 px-6 text-slate-400 max-w-md truncate"
-                title={JSON.stringify(log.details)}
-              >
-                {typeof log.details === "object"
-                  ? JSON.stringify(log.details)
-                  : log.details}
-              </td>
+      <div class="overflow-x-auto flex-1 h-full">
+        <table class="table table-pin-rows w-full text-left">
+          <thead
+            class="text-xs uppercase bg-base-200/50 text-base-content/70 backdrop-blur-md z-10"
+          >
+            <tr>
+              <th class="py-4 px-6 font-medium tracking-wider w-48">Time</th>
+              <th class="py-4 px-6 font-medium tracking-wider w-40">User</th>
+              <th class="py-4 px-6 font-medium tracking-wider w-32">Action</th>
+              <th class="py-4 px-6 font-medium tracking-wider w-48">Target</th>
+              <th class="py-4 px-6 font-medium tracking-wider">Details</th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
+          </thead>
+          <tbody class="text-sm divide-y divide-base-200">
+            {#each filteredLogs as log (log.timestamp)}
+              <tr class="hover:bg-base-200/30 transition-colors group">
+                <td
+                  class="py-3 px-6 whitespace-nowrap text-base-content/70 font-mono text-xs"
+                >
+                  {new Date(log.timestamp).toLocaleString()}
+                </td>
+                <td class="py-3 px-6 font-medium text-base-content">
+                  <div class="flex items-center gap-2">
+                    <div class="avatar placeholder">
+                      <div
+                        class="bg-neutral text-neutral-content rounded-full w-6"
+                      >
+                        <span class="text-xs">
+                          {log.user ? log.user.charAt(0).toUpperCase() : "?"}
+                        </span>
+                      </div>
+                    </div>
+                    <span class="truncate max-w-[150px]" title={log.user}
+                      >{log.user || "Unknown"}</span
+                    >
+                  </div>
+                </td>
+                <td class="py-3 px-6">
+                  {#if log.action.includes("DELETE")}
+                    <span
+                      class="badge badge-error badge-sm font-medium gap-1 bg-error/10 text-error border-0"
+                    >
+                      {log.action}
+                    </span>
+                  {:else if log.action.includes("CREATE")}
+                    <span
+                      class="badge badge-success badge-sm font-medium gap-1 bg-success/10 text-success border-0"
+                    >
+                      {log.action}
+                    </span>
+                  {:else if log.action.includes("UPDATE")}
+                    <span
+                      class="badge badge-warning badge-sm font-medium gap-1 bg-warning/10 text-warning border-0"
+                    >
+                      {log.action}
+                    </span>
+                  {:else}
+                    <span
+                      class="badge badge-ghost badge-sm bg-base-300 text-base-content"
+                    >
+                      {log.action}
+                    </span>
+                  {/if}
+                </td>
+                <td
+                  class="py-3 px-6 text-base-content/80 font-mono text-xs truncate max-w-[200px]"
+                  title={log.target}
+                >
+                  {log.target}
+                </td>
+                <td
+                  class="py-3 px-6 text-base-content/60 text-xs font-mono max-w-md"
+                >
+                  <div class="truncate" title={JSON.stringify(log.details)}>
+                    {typeof log.details === "object"
+                      ? JSON.stringify(log.details)
+                      : log.details}
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
   </div>
 </div>
