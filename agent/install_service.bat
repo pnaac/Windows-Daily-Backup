@@ -13,6 +13,9 @@ echo   Kriplani Backup Agent - Service Installer
 echo ========================================================
 echo.
 
+:: Ensure we are working in the script's directory
+cd /d "%~dp0"
+
 set "AGENT_EXE=KriplaniBackupAgent.exe"
 set "TASK_NAME=KriplaniBackupAgent"
 

@@ -30,7 +30,7 @@ def build():
         "--noconfirm",
         "--onefile",
         "--noconsole", 
-        "--name", "KriplaniBackupAgent_Installer",
+        "--name", "KriplaniBackupAgent",
         f"--add-data", f"serviceAccountKey.json{separator}.",
         f"--add-data", f"rclone.exe{separator}.",
         "agent.py"
