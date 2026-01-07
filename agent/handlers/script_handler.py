@@ -6,6 +6,15 @@ from firebase_admin import db
 from .base_handler import BaseHandler
 
 class ScriptHandler(BaseHandler):
+    def _get_interpreter_cmd(self, interpreter):
+        if interpreter == "python":
+            return ".py", ["python"]
+        elif interpreter in ["cmd", "batch"]:
+            return ".bat", ["cmd", "/c"]
+        elif interpreter == "bash":
+            return ".sh", ["bash"]
+        return ".ps1", ["powershell", "-ExecutionPolicy", "Bypass", "-File"]
+
     def execute(self, job_id, job_config, global_config, agent_id, **kwargs):
         """
         Executes a script provided in the job configuration.
@@ -28,19 +37,7 @@ class ScriptHandler(BaseHandler):
             state_ref.update({"status": "Error", "detailed_message": err})
             return {"status": "Error", "detailed_message": err}
 
-        # Determine file extension and execution command
-        ext = ".ps1"
-        cmd_prefix = ["powershell", "-ExecutionPolicy", "Bypass", "-File"]
-        
-        if interpreter == "python":
-            ext = ".py"
-            cmd_prefix = ["python"]
-        elif interpreter == "cmd" or interpreter == "batch":
-            ext = ".bat"
-            cmd_prefix = ["cmd", "/c"]
-        elif interpreter == "bash":
-            ext = ".sh"
-            cmd_prefix = ["bash"]
+        ext, cmd_prefix = self._get_interpreter_cmd(interpreter)
 
         # Create Temp File
         try:
@@ -61,7 +58,7 @@ class ScriptHandler(BaseHandler):
             # Cleanup
             try:
                 os.remove(tmp_path)
-            except:
+            except OSError:
                 pass
 
             output = process.stdout.strip()
@@ -89,6 +86,7 @@ class ScriptHandler(BaseHandler):
                 # Push Log
                 db.reference(f'logs/{agent_id}').push({
                     "timestamp": success_time,
+                    "job_id": job_id,
                     "job_name": job_name,
                     "status": "Success",
                     "type": "Scheduled" if trigger_source == 'scheduled' else "Manual",

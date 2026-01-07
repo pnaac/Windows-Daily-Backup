@@ -31,8 +31,8 @@ def build():
         "--onefile",
         "--noconsole", 
         "--name", "KriplaniBackupAgent",
-        f"--add-data", f"serviceAccountKey.json{separator}.",
-        f"--add-data", f"rclone.exe{separator}.",
+        "--add-data", f"serviceAccountKey.json{separator}.",
+        "--add-data", f"rclone.exe{separator}.",
         "agent.py"
     ]
     

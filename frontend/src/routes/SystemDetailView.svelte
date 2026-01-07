@@ -187,6 +187,49 @@
     else if (val > 31) jobForm.schedule.day = 31;
     else jobForm.schedule.day = val;
   }
+
+  // Job logs state
+  let expandedJobId = null;
+  // @ts-ignore
+  $: systemLogs = $backupStore.logs[systemId] || {};
+
+  function toggleExpand(jobId) {
+    if (expandedJobId === jobId) {
+      expandedJobId = null;
+    } else {
+      expandedJobId = jobId;
+    }
+  }
+
+  /**
+   * @typedef {Object} LogEntry
+   * @property {string} job_id
+   * @property {string} job_name
+   * @property {number|string} timestamp
+   * @property {string} [status]
+   * @property {string} [type]
+   * @property {string} [size]
+   */
+
+  /**
+   * @param {string} jobId
+   * @param {string} jobName
+   * @returns {LogEntry[]}
+   */
+  function getJobLogs(jobId, jobName) {
+    // @ts-ignore
+    const logs = /** @type {LogEntry[]} */ (Object.values(systemLogs));
+
+    return logs
+      .filter((log) => log.job_id === jobId || log.job_name === jobName) // Support legacy logs by name
+      .sort((a, b) => {
+        // Sort newest first
+        const dateA = new Date(a.timestamp);
+        const dateB = new Date(b.timestamp);
+        return dateB.getTime() - dateA.getTime();
+      })
+      .slice(0, 10); // Show last 10
+  }
 </script>
 
 <div class="max-w-7xl mx-auto px-4">
@@ -483,6 +526,12 @@
             >
               Edit
             </button>
+            <button
+              class="btn btn-sm btn-ghost border border-base-200"
+              on:click={() => toggleExpand(jobId)}
+            >
+              Log
+            </button>
 
             {#if currentUser?.email
               ?.trim()
@@ -495,6 +544,52 @@
               </button>
             {/if}
           </div>
+
+          {#if expandedJobId === jobId}
+            <div class="mt-4 pt-4 border-t border-base-200">
+              <h4
+                class="text-xs font-bold uppercase tracking-wider text-base-content/50 mb-2"
+              >
+                Logs History
+              </h4>
+              <div class="overflow-x-auto">
+                <table class="table table-xs w-full">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Status</th>
+                      <th>Data</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each getJobLogs(jobId, job.name) as log}
+                      <tr>
+                        <td class="font-mono">{log.timestamp}</td>
+                        <td>
+                          <span
+                            class={log.status === "Success"
+                              ? "text-success"
+                              : "text-error"}>{log.status}</span
+                          >
+                          <span class="text-xs opacity-50 block"
+                            >{log.type}</span
+                          >
+                        </td>
+                        <td class="font-mono">{log.size || "-"}</td>
+                      </tr>
+                    {/each}
+                    {#if getJobLogs(jobId, job.name).length === 0}
+                      <tr
+                        ><td colspan="3" class="text-center opacity-50 italic"
+                          >No logs found</td
+                        ></tr
+                      >
+                    {/if}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
     {/each}
@@ -523,9 +618,29 @@
         <tbody>
           {#each Object.entries(jobs) as [jobId, job]}
             {@const state = jobStates[jobId] || {}}
-            <tr class="hover">
+            <!-- MAIN ROW -->
+            <tr
+              class="hover cursor-pointer"
+              on:click={() => toggleExpand(jobId)}
+            >
               <td class="font-medium text-base-content text-base">
                 <div class="flex items-center gap-2">
+                  <!-- Expansion Arrow -->
+                  <svg
+                    class="w-4 h-4 transition-transform {expandedJobId === jobId
+                      ? 'rotate-90'
+                      : ''}"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    ><path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 5l7 7-7 7"
+                    /></svg
+                  >
+
                   <div
                     class="w-2 h-2 rounded-full {state.status === 'Running'
                       ? 'bg-indigo-500 animate-pulse'
@@ -577,7 +692,8 @@
                     {#if state.status === "Error"}
                       <button
                         class="text-[10px] text-error mt-0.5 text-left hover:underline focus:outline-none"
-                        on:click={() => showError(state.detailed_message)}
+                        on:click|stopPropagation={() =>
+                          showError(state.detailed_message)}
                         title="Click to view full error log"
                       >
                         {state.detailed_message &&
@@ -593,7 +709,7 @@
                 </div>
               </td>
               <td class="text-right">
-                <div class="join">
+                <div class="join" on:click|stopPropagation>
                   <button
                     class="btn btn-sm btn-ghost join-item tooltip"
                     data-tip="Run Now"
@@ -645,12 +761,89 @@
                 </div>
               </td>
             </tr>
+
+            <!-- EXPANDED ROW (HISTORY) -->
+            {#if expandedJobId === jobId}
+              <tr class="bg-base-200/30">
+                <td colspan="7" class="p-0">
+                  <div class="p-6">
+                    <h4
+                      class="text-xs font-bold uppercase tracking-wider text-base-content/50 mb-3 flex items-center gap-2"
+                    >
+                      <svg
+                        class="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        ><path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        /></svg
+                      >
+                      Last 10 Runs History
+                    </h4>
+                    <table
+                      class="table table-sm bg-base-100 rounded-lg shadow-sm border border-base-200"
+                    >
+                      <thead>
+                        <tr class="bg-base-200/50">
+                          <th>Timestamp</th>
+                          <th>Trigger Type</th>
+                          <th>Status</th>
+                          <th>Data Moved</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {#each getJobLogs(jobId, job.name) as log}
+                          <tr>
+                            <td class="font-mono text-xs">{log.timestamp}</td>
+                            <td>
+                              <span
+                                class="badge badge-sm badge-outline {log.type ===
+                                'Scheduled'
+                                  ? 'opacity-70'
+                                  : 'badge-primary'}"
+                              >
+                                {log.type || "Manual"}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                class="font-bold {log.status === 'Success'
+                                  ? 'text-success'
+                                  : 'text-error'}"
+                              >
+                                {log.status}
+                              </span>
+                            </td>
+                            <td class="font-mono text-xs font-bold"
+                              >{log.size || "0 B"}</td
+                            >
+                          </tr>
+                        {/each}
+                        {#if getJobLogs(jobId, job.name).length === 0}
+                          <tr>
+                            <td
+                              colspan="4"
+                              class="text-center py-4 opacity-50 italic"
+                              >No history available for this job yet.</td
+                            >
+                          </tr>
+                        {/if}
+                      </tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+            {/if}
           {/each}
 
           {#if Object.keys(jobs).length === 0}
             <tr>
               <td
-                colspan="6"
+                colspan="7"
                 class="text-center py-10 text-base-content/40 bg-base-200/20"
               >
                 No jobs configured. Click "New Job" to start.

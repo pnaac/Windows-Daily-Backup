@@ -2,6 +2,12 @@
 /// <reference types="vite/client" />
 
 declare namespace svelteHTML {
+    // START: Fix for IDE errors complaining about svelteHTML usage
+    type HTMLAttributes<T> = any;
+    // END
+}
+
+declare namespace svelteHTML {
   // Enhances Svelte's HTML attributes for IDE support
   // This helps when using custom actions or Svelte 5 specific attributes
   import type { HTMLAttributes } from 'svelte/elements';

@@ -103,6 +103,13 @@ class RcloneHandler(BaseHandler):
         except Exception as e:
             print(f"⚠️ Retention Error: {e}")
 
+    def _resolve_remote_path(self, remote_folder):
+        # Handle Remote Configuration
+        if len(remote_folder) > 15 and "/" not in remote_folder and " " not in remote_folder:
+            print(f"🔗 Detected Folder ID: {remote_folder}")
+            return f"gdrive,root_folder_id={remote_folder}:", ""
+        return "gdrive:", remote_folder
+
     # --- EXECUTE ---
     def execute(self, job_id, job_config, global_config, agent_id, **kwargs):
         trigger_source = kwargs.get('trigger_source', 'manual')
@@ -116,15 +123,7 @@ class RcloneHandler(BaseHandler):
             state_ref.update({"status": "Error", "detailed_message": err})
             return {"status": "Error", "detailed_message": err}
         
-        # Handle Remote Configuration
-        raw_remote = job_config.get('remote_folder', 'Backups')
-        if len(raw_remote) > 15 and "/" not in raw_remote and " " not in raw_remote:
-            print(f"🔗 Detected Folder ID: {raw_remote}")
-            base_remote = f"gdrive,root_folder_id={raw_remote}:"
-            remote_root = ""
-        else:
-            base_remote = "gdrive:"
-            remote_root = raw_remote
+        base_remote, remote_root = self._resolve_remote_path(job_config.get('remote_folder', 'Backups'))
 
         destination_subfolder = job_config.get('destination_subfolder', job_name.replace(" ", "_"))
         full_remote_path = f"{remote_root}/{destination_subfolder}".strip("/") 
@@ -163,13 +162,13 @@ class RcloneHandler(BaseHandler):
                             bytes_transferred = log_entry['stats'].get('bytes', 0)
                         elif 'level' in log_entry and log_entry['level'] == 'error':
                             last_error_lines.append(log_entry.get('msg', ''))
-                    except:
+                    except ValueError:
                         last_error_lines.append(line.strip())
             
             if process.returncode != 0: 
                 error_msg = "; ".join(last_error_lines[-3:])
                 if not error_msg: error_msg = "Rclone Sync Failed (Unknown Error)"
-                raise Exception(error_msg)
+                raise RuntimeError(error_msg)
 
             # 2. Snapshot
             state_ref.update({"detailed_message": f"Creating Snapshot: Backup_{timestamp}..."})
@@ -201,6 +200,7 @@ class RcloneHandler(BaseHandler):
             # Logs
             log_entry = {
                 "timestamp": success_time,
+                "job_id": job_id,
                 "job_name": job_name,
                 "status": "Success",
                 "size": size_str,

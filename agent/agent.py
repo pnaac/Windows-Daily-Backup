@@ -28,7 +28,8 @@ RCLONE_URL = f"https://downloads.rclone.org/{RCLONE_VERSION}/rclone-{RCLONE_VERS
 
 # --- GLOBAL STATE ---
 AGENT_ID = None
-RCLONE_BIN = "rclone" # Default to PATH, updated by ensure_rclone
+RCLONE_EXE_NAME = "rclone.exe" if platform.system() == "Windows" else "rclone"
+RCLONE_BIN = RCLONE_EXE_NAME # Default to PATH, updated by ensure_rclone
 KEY_PATH = "serviceAccountKey.json"
 ACTIVE_JOBS = {} # Track running threads: {job_id: thread_obj}
 
@@ -41,7 +42,7 @@ else:
 if not os.path.exists(config_dir):
     try:
         os.makedirs(config_dir)
-    except:
+    except OSError:
         config_dir = os.getcwd() # Fallback
 
 IDENTITY_FILE = os.path.join(config_dir, "agent_identity.json")
@@ -74,14 +75,14 @@ def ensure_rclone():
     global RCLONE_BIN
     
     # 1. Check Bundled Resource
-    bundled_bin = get_resource_path("rclone.exe")
+    bundled_bin = get_resource_path(RCLONE_EXE_NAME)
     if os.path.exists(bundled_bin):
         log.info(f"✅ Found bundled Rclone: {bundled_bin}")
         RCLONE_BIN = bundled_bin
         return
 
     # 2. Check Local
-    local_bin = os.path.join(os.getcwd(), "rclone.exe" if platform.system() == "Windows" else "rclone")
+    local_bin = os.path.join(os.getcwd(), RCLONE_EXE_NAME)
     if os.path.exists(local_bin):
         log.info(f"✅ Found local rclone: {local_bin}")
         RCLONE_BIN = local_bin
@@ -89,7 +90,7 @@ def ensure_rclone():
 
     # 3. Check PATH
     if shutil.which("rclone"):
-        log.info(f"✅ Found rclone in PATH")
+        log.info("✅ Found rclone in PATH")
         RCLONE_BIN = "rclone"
         return
 
@@ -105,14 +106,14 @@ def ensure_rclone():
                 zip_ref.extractall("rclone_temp")
             
             extracted_folder = f"rclone-{RCLONE_VERSION}-windows-amd64"
-            src = os.path.join("rclone_temp", extracted_folder, "rclone.exe")
-            shutil.move(src, "rclone.exe")
+            src = os.path.join("rclone_temp", extracted_folder, RCLONE_EXE_NAME)
+            shutil.move(src, RCLONE_EXE_NAME)
             
             # Cleanup
             os.remove(zip_path)
             shutil.rmtree("rclone_temp")
             
-            RCLONE_BIN = os.path.abspath("rclone.exe")
+            RCLONE_BIN = os.path.abspath(RCLONE_EXE_NAME)
             log.info(f"✅ Rclone installed to: {RCLONE_BIN}")
         except Exception as e:
             log.error(f"❌ Failed to download rclone: {e}")
@@ -149,7 +150,7 @@ def get_or_create_identity():
             with open(IDENTITY_FILE, "r") as f:
                 data = json.load(f)
                 AGENT_ID = data.get("uuid")
-        except:
+        except (ValueError, OSError):
             pass
     
     if not AGENT_ID:
@@ -280,7 +281,7 @@ def check_schedule(schedule_config, last_run_iso=None):
     try:
         sh, sm = map(int, sched_time_str.split(':'))
         scheduled_time_today = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
-    except:
+    except ValueError:
         return False 
 
     # If currently before the scheduled time, don't run
@@ -350,7 +351,8 @@ def handle_job(job_id, job_config, global_config, handlers, trigger_source='manu
     
 
 # --- MAIN LOOP ---
-def main():
+# --- MAIN LOOP ---
+def initialize_agent():
     log.info("--- STARTING AGENT ---")
     ensure_rclone()
     configure_rclone() 
@@ -358,83 +360,79 @@ def main():
     register_agent()
     install_startup()
     reset_stuck_jobs()
-    
-    # Initialize Handlers
-    handlers = {
-        'rclone': RcloneHandler(RCLONE_BIN),
-        'script': ScriptHandler()
-    }
-    
-    log.info(f"👀 Agent {AGENT_ID} Active. Waiting for instructions...")
-    
-    agent_start_time = datetime.datetime.now()
-    STARTUP_DELAY_SECONDS = 60 # Reduced to 1 minute to allow quick verification if needed
-    # STARTUP_DELAY_SECONDS = 600 # Revert to 10m for prod if needed, but 1m is safe if logic is robust.
-    # User complained about delays, let's keep it responsive but safe. 60s is fine.
 
+def _process_manual_triggers(jobs, global_config, handlers):
+    manual_trigger_job_id = db.reference(f'control/{AGENT_ID}/trigger_now').get()
+    if manual_trigger_job_id:
+        db.reference(f'control/{AGENT_ID}/trigger_now').delete()
+        if manual_trigger_job_id == "ALL":
+            for jid, jconf in jobs.items():
+                handle_job(jid, jconf, global_config, handlers, trigger_source='manual')
+        elif manual_trigger_job_id in jobs:
+            log.info(f"⚡ Manual Trigger received for {manual_trigger_job_id}")
+            handle_job(manual_trigger_job_id, jobs[manual_trigger_job_id], global_config, handlers, trigger_source='manual')
+
+def _process_scheduled_checks(jobs, job_states, global_config, handlers, agent_start_time, last_processed_minute, startup_delay=60):
+    if (datetime.datetime.now() - agent_start_time).total_seconds() < startup_delay:
+        return last_processed_minute
+
+    current_minute = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    if current_minute == last_processed_minute:
+        return last_processed_minute
+
+    for job_id, job_config in jobs.items():
+        last_run = job_states.get(job_id, {}).get('last_scheduled_run_timestamp')
+        if check_schedule(job_config.get('schedule', {}), last_run):
+            log.info(f"⏰ Schedule matched for {job_id}")
+            handle_job(job_id, job_config, global_config, handlers, trigger_source='scheduled')
+    
+    return current_minute
+
+def run_agent_loop(handlers):
+    agent_start_time = datetime.datetime.now()
     last_processed_minute = ""
+
+    log.info(f"👀 Agent {AGENT_ID} Active. Waiting for instructions...")
 
     while True:
         try:
             # 1. Existence Check
-            system_check = db.reference(f'systems/{AGENT_ID}').get()
-            if system_check is None:
+            if db.reference(f'systems/{AGENT_ID}').get() is None:
                 log.warning(f"⛔ System ID {AGENT_ID} not found in registry (Deleted by Admin).")
-                log.warning("   Agent is decommissioning...")
                 sys.exit(0)
 
-            # 2. Heartbeat (Vital for "Online" status)
+            # 2. Heartbeat
             db.reference(f'systems/{AGENT_ID}/heartbeat').set(int(time.time()))
 
             # 3. Fetch Configuration
-            global_config = db.reference(f'global_config').get() or {}
+            global_config = db.reference('global_config').get() or {}
             jobs = db.reference(f'configurations/{AGENT_ID}').get() or {}
             job_states = db.reference(f'runtime_state/{AGENT_ID}/job_states').get() or {}
 
-            # 4. Check Manual Triggers (Control) - BYPASSES DELAY
-            manual_trigger_job_id = db.reference(f'control/{AGENT_ID}/trigger_now').get()
-            if manual_trigger_job_id:
-                db.reference(f'control/{AGENT_ID}/trigger_now').delete()
-                
-                if manual_trigger_job_id == "ALL":
-                    for jid, jconf in jobs.items():
-                        handle_job(jid, jconf, global_config, handlers, trigger_source='manual')
-                elif manual_trigger_job_id in jobs:
-                    log.info(f"⚡ Manual Trigger received for {manual_trigger_job_id}")
-                    handle_job(manual_trigger_job_id, jobs[manual_trigger_job_id], global_config, handlers, trigger_source='manual')
+            # 4. Process Logic
+            _process_manual_triggers(jobs, global_config, handlers)
+            last_processed_minute = _process_scheduled_checks(
+                jobs, job_states, global_config, handlers, 
+                agent_start_time, last_processed_minute
+            )
 
-            # 5. Scheduled Checks - RESPECTS DELAY
-            time_since_start = (datetime.datetime.now() - agent_start_time).total_seconds()
-            
-            if time_since_start < STARTUP_DELAY_SECONDS:
-                # log.debug("Startup delay active...")
-                pass
-            else:
-                current_minute = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                if current_minute != last_processed_minute:
-                    last_processed_minute = current_minute
-                    
-                    for job_id, job_config in jobs.items():
-                        schedule = job_config.get('schedule', {})
-                        # KEY CHANGE: Look at last_scheduled_run_timestamp, NOT last_run_timestamp
-                        last_run_str = job_states.get(job_id, {}).get('last_scheduled_run_timestamp')
-                        
-                        if check_schedule(schedule, last_run_str):
-                            log.info(f"⏰ Schedule matched for {job_id}")
-                            handle_job(job_id, job_config, global_config, handlers, trigger_source='scheduled')
-
-            # 6. Thread Monitoring
-            # (Optional) Log active threads count if changed
-            
             time.sleep(5)
 
         except KeyboardInterrupt:
             log.info("\nExiting...")
             sys.exit(0)
         except Exception:
-            log.error(f"Glitch (Unexpected Error):")
+            log.error("Glitch (Unexpected Error):")
             log.error(traceback.format_exc())
             time.sleep(10)
+
+def main():
+    initialize_agent()
+    handlers = {
+        'rclone': RcloneHandler(RCLONE_BIN),
+        'script': ScriptHandler()
+    }
+    run_agent_loop(handlers)
 
 if __name__ == "__main__":
     main()
