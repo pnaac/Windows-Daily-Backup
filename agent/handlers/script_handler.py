@@ -6,15 +6,11 @@ from firebase_admin import db
 from .base_handler import BaseHandler
 
 class ScriptHandler(BaseHandler):
-    def execute(self, job_id, job_config, global_config, agent_id):
+    def execute(self, job_id, job_config, global_config, agent_id, **kwargs):
         """
         Executes a script provided in the job configuration.
-        Config:
-          - payload:
-            - interpreter: "powershell", "python", "cmd", "bash"
-            - script_content: "echo hello"
-            - timeout: 300 (seconds)
         """
+        trigger_source = kwargs.get('trigger_source', 'manual')
         job_name = job_config.get('name', 'Unknown Script')
         payload = job_config.get('payload', {})
         interpreter = payload.get('interpreter', 'powershell').lower()
@@ -24,7 +20,7 @@ class ScriptHandler(BaseHandler):
         state_ref = db.reference(f'runtime_state/{agent_id}/job_states/{job_id}')
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        print(f"\n📜 Starting Script Job: {job_name}")
+        print(f"\n📜 Starting Script Job: {job_name} [Trigger: {trigger_source}]")
         state_ref.update({"status": "Running", "detailed_message": "Executing script...", "start_time": timestamp})
 
         if not script_content:
@@ -84,6 +80,10 @@ class ScriptHandler(BaseHandler):
                     "last_run_timestamp": success_time,
                     "last_size": "N/A" # Scripts don't necessarily transfer data
                 }
+
+                if trigger_source == 'scheduled':
+                    result["last_scheduled_run_timestamp"] = success_time
+
                 state_ref.update(result)
                 
                 # Push Log
@@ -91,7 +91,7 @@ class ScriptHandler(BaseHandler):
                     "timestamp": success_time,
                     "job_name": job_name,
                     "status": "Success",
-                    "type": "Script",
+                    "type": "Scheduled" if trigger_source == 'scheduled' else "Manual",
                     "details": logs[:2000] # Truncate logs to avoid DB bloat
                 })
                 
@@ -106,7 +106,7 @@ class ScriptHandler(BaseHandler):
                     "timestamp": timestamp,
                     "job_name": job_name,
                     "status": "Error",
-                    "type": "Script",
+                    "type": "Scheduled" if trigger_source == 'scheduled' else "Manual",
                     "details": logs[:2000]
                 })
 

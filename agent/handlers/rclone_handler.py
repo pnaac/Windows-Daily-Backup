@@ -104,7 +104,8 @@ class RcloneHandler(BaseHandler):
             print(f"⚠️ Retention Error: {e}")
 
     # --- EXECUTE ---
-    def execute(self, job_id, job_config, global_config, agent_id):
+    def execute(self, job_id, job_config, global_config, agent_id, **kwargs):
+        trigger_source = kwargs.get('trigger_source', 'manual')
         job_name = job_config.get('name', 'Unknown Job')
         source_path = job_config.get('source_path')
         state_ref = db.reference(f'runtime_state/{agent_id}/job_states/{job_id}')
@@ -131,7 +132,7 @@ class RcloneHandler(BaseHandler):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         backup_path = f"{full_remote_path}/Backup_{timestamp}"
 
-        print(f"\n🚀 Starting Job: {job_name} ({source_path})")
+        print(f"\n🚀 Starting Job: {job_name} ({source_path}) [Trigger: {trigger_source}]")
         print(f"   Destination: {base_remote}{backup_path}")
 
         # Update Job State -> Running
@@ -190,6 +191,11 @@ class RcloneHandler(BaseHandler):
                 "last_run_timestamp": success_time,
                 "last_size": size_str
             }
+
+            # ONLY update last_scheduled_run if this was a scheduled trigger
+            if trigger_source == 'scheduled':
+                result["last_scheduled_run_timestamp"] = success_time
+
             state_ref.update(result)
             
             # Logs
@@ -198,7 +204,7 @@ class RcloneHandler(BaseHandler):
                 "job_name": job_name,
                 "status": "Success",
                 "size": size_str,
-                "type": "Scheduled"
+                "type": "Scheduled" if trigger_source == 'scheduled' else "Manual"
             }
             db.reference(f'logs/{agent_id}').push(log_entry)
 

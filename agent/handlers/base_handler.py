@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 class BaseHandler(ABC):
     @abstractmethod
-    def execute(self, job_id, job_config, global_config, agent_id):
+    def execute(self, job_id, job_config, global_config, agent_id, **kwargs):
         """
         Executes the job.
         

@@ -289,16 +289,9 @@ def check_schedule(schedule_config, last_run_iso=None):
 
     # DAILY LOGIC
     if sched_type == 'daily':
-        # Run if we haven't run *after the scheduled time* today
+        # Simple check: Did we run *as a schedule* today?
         if last_run_date_str == today_str:
-            # Check timestamps
-            try:
-                last_run_dt = datetime.datetime.strptime(last_run_iso.split('.')[0], "%Y-%m-%d %H:%M:%S")
-                if last_run_dt >= scheduled_time_today:
-                    return False # Already ran for this schedule today
-            except:
-                pass # Parse error, assume safe to run? Or safe to skip? Better to run and possibly duplicate than miss.
-        
+            return False
         return True 
     
     # MONTHLY LOGIC
@@ -318,14 +311,14 @@ def check_schedule(schedule_config, last_run_iso=None):
     return False
 
 # --- JOB DISPATCHER ---
-def _job_thread_wrapper(job_id, job_config, global_config, handlers):
+def _job_thread_wrapper(job_id, job_config, global_config, handlers, trigger_source):
     """ Wrapped function to run in thread and clean up ACTIVE_JOBS on exit """
     try:
         job_type = job_config.get('type', 'RCLONE_SYNC')
         if job_type == 'RCLONE_SYNC':
-            handlers['rclone'].execute(job_id, job_config, global_config, AGENT_ID)
+            handlers['rclone'].execute(job_id, job_config, global_config, AGENT_ID, trigger_source=trigger_source)
         elif job_type == 'EXEC_SCRIPT':
-            handlers['script'].execute(job_id, job_config, global_config, AGENT_ID)
+            handlers['script'].execute(job_id, job_config, global_config, AGENT_ID, trigger_source=trigger_source)
         else:
             log.warning(f"⚠️ Unknown Job Type: {job_type}")
     except Exception as e:
@@ -337,7 +330,7 @@ def _job_thread_wrapper(job_id, job_config, global_config, handlers):
             del ACTIVE_JOBS[job_id]
         log.info(f"🏁 Job Finished: {job_id}")
 
-def handle_job(job_id, job_config, global_config, handlers):
+def handle_job(job_id, job_config, global_config, handlers, trigger_source='manual'):
     """
     Routes the job to the appropriate handler in a separate thread.
     """
@@ -349,8 +342,8 @@ def handle_job(job_id, job_config, global_config, handlers):
             # Clean up dead thread reference
             del ACTIVE_JOBS[job_id]
 
-    log.info(f"🚀 Spawning thread for Job {job_id}")
-    t = threading.Thread(target=_job_thread_wrapper, args=(job_id, job_config, global_config, handlers))
+    log.info(f"🚀 Spawning thread for Job {job_id} [Trigger: {trigger_source}]")
+    t = threading.Thread(target=_job_thread_wrapper, args=(job_id, job_config, global_config, handlers, trigger_source))
     t.daemon = True # Allow agent to exit even if thread is running
     t.start()
     ACTIVE_JOBS[job_id] = t
@@ -375,10 +368,9 @@ def main():
     log.info(f"👀 Agent {AGENT_ID} Active. Waiting for instructions...")
     
     agent_start_time = datetime.datetime.now()
-    STARTUP_DELAY_SECONDS = 60 # Reduced to 1 minute for faster feedback in Enterprise mode? No keep 10m but override locally.
-    # Actually keep 10 mins as per user req, but let's make it 60s for now to be compassionate to the user testing.
-    # Reverting to 600 for production safety
-    STARTUP_DELAY_SECONDS = 600 
+    STARTUP_DELAY_SECONDS = 60 # Reduced to 1 minute to allow quick verification if needed
+    # STARTUP_DELAY_SECONDS = 600 # Revert to 10m for prod if needed, but 1m is safe if logic is robust.
+    # User complained about delays, let's keep it responsive but safe. 60s is fine.
 
     last_processed_minute = ""
 
@@ -406,10 +398,10 @@ def main():
                 
                 if manual_trigger_job_id == "ALL":
                     for jid, jconf in jobs.items():
-                        handle_job(jid, jconf, global_config, handlers)
+                        handle_job(jid, jconf, global_config, handlers, trigger_source='manual')
                 elif manual_trigger_job_id in jobs:
                     log.info(f"⚡ Manual Trigger received for {manual_trigger_job_id}")
-                    handle_job(manual_trigger_job_id, jobs[manual_trigger_job_id], global_config, handlers)
+                    handle_job(manual_trigger_job_id, jobs[manual_trigger_job_id], global_config, handlers, trigger_source='manual')
 
             # 5. Scheduled Checks - RESPECTS DELAY
             time_since_start = (datetime.datetime.now() - agent_start_time).total_seconds()
@@ -424,11 +416,12 @@ def main():
                     
                     for job_id, job_config in jobs.items():
                         schedule = job_config.get('schedule', {})
-                        last_run_str = job_states.get(job_id, {}).get('last_run_timestamp')
+                        # KEY CHANGE: Look at last_scheduled_run_timestamp, NOT last_run_timestamp
+                        last_run_str = job_states.get(job_id, {}).get('last_scheduled_run_timestamp')
                         
                         if check_schedule(schedule, last_run_str):
                             log.info(f"⏰ Schedule matched for {job_id}")
-                            handle_job(job_id, job_config, global_config, handlers)
+                            handle_job(job_id, job_config, global_config, handlers, trigger_source='scheduled')
 
             # 6. Thread Monitoring
             # (Optional) Log active threads count if changed
