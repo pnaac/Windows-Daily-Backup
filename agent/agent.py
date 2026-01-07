@@ -289,9 +289,16 @@ def check_schedule(schedule_config, last_run_iso=None):
 
     # DAILY LOGIC
     if sched_type == 'daily':
-        # Run if we haven't run today yet
+        # Run if we haven't run *after the scheduled time* today
         if last_run_date_str == today_str:
-            return False
+            # Check timestamps
+            try:
+                last_run_dt = datetime.datetime.strptime(last_run_iso.split('.')[0], "%Y-%m-%d %H:%M:%S")
+                if last_run_dt >= scheduled_time_today:
+                    return False # Already ran for this schedule today
+            except:
+                pass # Parse error, assume safe to run? Or safe to skip? Better to run and possibly duplicate than miss.
+        
         return True 
     
     # MONTHLY LOGIC
