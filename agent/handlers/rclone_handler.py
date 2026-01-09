@@ -133,11 +133,23 @@ class RcloneHandler(BaseHandler):
         
         base_remote, remote_root = self._resolve_remote_path(job_config.get('remote_folder', 'Backups'))
 
+        # --- LIFECYCLE FOLDER LOGIC ---
+        # Determine if this is a Daily or Monthly backup to route to the correct parent folder
+        # for GCS lifecycle policies to apply correctly.
+        schedule_type = job_config.get('schedule', {}).get('type', 'daily').lower()
+        
+        # If manual trigger, we assume daily unless specified otherwise (or we could default to the job's config)
+        lifecycle_parent = "Monthly_Backups" if schedule_type == 'monthly' else "Daily_Backups"
+
         destination_subfolder = job_config.get('destination_subfolder', job_name.replace(" ", "_"))
-        full_remote_path = f"{remote_root}/{destination_subfolder}".strip("/") 
-        mirror_path = f"{full_remote_path}/Current_Mirror"
+        
+        # Construct the path: [RemoteRoot] / [LifecycleParent] / [JobName]
+        # e.g. /Tally_9  ->  /Daily_Backups/Tally_9
+        full_remote_path = f"{remote_root}/{lifecycle_parent}/{destination_subfolder}".strip("/") 
+        
+        mirror_path = f"/{full_remote_path}/Current_Mirror"
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        backup_path = f"{full_remote_path}/Backup_{timestamp}"
+        backup_path = f"/{full_remote_path}/Backup_{timestamp}"
 
         print(f"\n🚀 Starting Job: {job_name} ({source_path}) [Trigger: {trigger_source}]")
         print(f"   Destination: {base_remote}{backup_path}")
