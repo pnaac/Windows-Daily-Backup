@@ -181,8 +181,13 @@ class RcloneHandler(BaseHandler):
                         log_entry = json.loads(line)
                         if 'stats' in log_entry: 
                             bytes_transferred = log_entry['stats'].get('bytes', 0)
+                            # Print progress to console (using \r to overwrite line)
+                            size_fmt = self._parse_rclone_size(bytes_transferred)
+                            print(f"\r⏳ Syncing... {size_fmt} transferred", end="")
+                            # Optional: Update Firebase less frequently (e.g. check time)
                         elif 'level' in log_entry and log_entry['level'] == 'error':
                             last_error_lines.append(log_entry.get('msg', ''))
+                            print(f"\n❌ Rclone Error: {log_entry.get('msg', '')}")
                     except ValueError:
                         last_error_lines.append(line.strip())
             
