@@ -358,7 +358,7 @@
                {isSidebarCollapsed ? 'justify-center px-2' : ''}"
             title="Backups"
           >
-            <span class="w-5 h-5">{@html Icons.database}</span>
+            <span class="w-5 h-5">{@html Icons.gcs}</span>
             {#if !isSidebarCollapsed}<span>Backups</span>{/if}
           </a>
         </li>
