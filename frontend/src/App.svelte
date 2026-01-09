@@ -350,6 +350,19 @@
           </a>
         </li>
 
+        <li>
+          <a
+            href="https://console.cloud.google.com/storage/browser/kriplani-backups"
+            target="_blank"
+            class="flex items-center gap-3 px-4 py-3 mx-2 rounded-lg text-base-content/70 hover:bg-base-200
+               {isSidebarCollapsed ? 'justify-center px-2' : ''}"
+            title="GCS Bucket"
+          >
+            <span class="w-5 h-5">{@html Icons.database}</span>
+            {#if !isSidebarCollapsed}<span>GCS Bucket</span>{/if}
+          </a>
+        </li>
+
         {#if !isSidebarCollapsed}
           <div class="divider my-4 mx-4"></div>
           {#if user.email === "admin@kriplanibuilders.com"}
