@@ -248,10 +248,15 @@ def configure_rclone():
         if "gcs:" not in existing_remotes:
             log.info("⚙️ Configuring 'gcs' remote for Google Cloud Storage...")
             # We use 'google cloud storage' provider. 
+            # We use 'google cloud storage' provider. 
             # object_acl/bucket_acl defaults are usually fine, but we can rely on IAM (Uniform Access).
+            # To fix "Error 400: Cannot insert legacy ACL", we must suppress ACLs.
             subprocess.run([
                 RCLONE_BIN, "config", "create", "gcs", "google cloud storage", 
-                "service_account_file", KEY_PATH
+                "service_account_file", KEY_PATH,
+                "bucket_policy_only", "true",
+                "object_acl", "", 
+                "bucket_acl", ""
             ], check=True)
             log.info("✅ Rclone remote 'gcs' created.")
             
@@ -411,7 +416,6 @@ def handle_job(job_id, job_config, global_config, handlers, trigger_source='manu
     ACTIVE_JOBS[job_id] = t
     
 
-# --- MAIN LOOP ---
 # --- MAIN LOOP ---
 def initialize_agent():
     log.info("--- STARTING AGENT ---")
