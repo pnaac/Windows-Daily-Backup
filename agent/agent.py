@@ -53,11 +53,20 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=5),
+    handlers=[
+        RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
 log = logging.getLogger("Agent")
+
+# --- FIX WINDOWS UNICODE CRASHES ---
+if platform.system() == "Windows":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 # --- RESOURCE HANDLING ---
 def get_resource_path(relative_path): 
@@ -250,6 +259,45 @@ def configure_rclone():
     except Exception as e:
         log.error(f"⚠️ Failed to configure rclone: {e}")
 
+# --- LOG UPLOAD HELPER ---
+def upload_agent_logs():
+    """ Copies agent.log to a temp path (to avoid locking) and uploads to GCS """
+    try:
+        # Determine GCS Bucket (from config or default)
+        target_bucket = "kriplani-backups" 
+        try:
+             # Try to find a valid GCS bucket from loaded jobs
+             jobs = db.reference(f'configurations/{AGENT_ID}').get() or {}
+             for j in jobs.values():
+                 rf = j.get('remote_folder', '')
+                 if 'kriplani' in rf or '-' in rf:
+                     target_bucket = rf
+                     break
+        except: 
+            pass
+
+        log.info(f"📤 Uploading Logs to gcs:{target_bucket}/Logs/{AGENT_ID}/...")
+
+        # 1. Copy Log to Temp
+        temp_log = os.path.join(config_dir, "agent_log_snapshot.txt")
+        shutil.copy2(LOG_FILE, temp_log)
+
+        # 2. Upload using Rclone
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        # Use 'copyto' to rename it on destination
+        remote_path = f"gcs:{target_bucket}/Logs/{AGENT_ID}/agent_{date_str}.log"
+        
+        subprocess.run([
+            RCLONE_BIN, "copyto", temp_log, remote_path
+        ], check=True)
+        
+        # Cleanup
+        if os.path.exists(temp_log):
+            os.remove(temp_log)
+            
+    except Exception as e:
+        log.error(f"⚠️ Failed to upload logs: {e}")
+
 # --- SCHEDULING LOGIC ---
 def reset_stuck_jobs():
     """ Runs on startup to clear any 'Running' states from a previous crash. """
@@ -338,10 +386,12 @@ def _job_thread_wrapper(job_id, job_config, global_config, handlers, trigger_sou
         log.error(f"Error in job {job_id}: {e}")
         traceback.print_exc()
     finally:
-        # Remove from active jobs
         if job_id in ACTIVE_JOBS:
             del ACTIVE_JOBS[job_id]
         log.info(f"🏁 Job Finished: {job_id}")
+        
+        # --- UPLOAD LOGS AFTER JOB ---
+        upload_agent_logs()
 
 def handle_job(job_id, job_config, global_config, handlers, trigger_source='manual'):
     """
