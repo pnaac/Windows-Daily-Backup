@@ -168,7 +168,9 @@ class RcloneHandler(BaseHandler):
             process = subprocess.Popen(
                 [self.RCLONE_BIN, "sync", source_path, f"{base_remote}{mirror_path}",
                  "--transfers", "8", "--use-json-log", "--stats", "1s", 
-                 "--retries", "5", "--retries-sleep", "30s"],
+                 "--retries", "5", "--retries-sleep", "30s",
+                 "--exclude", "$RECYCLE.BIN/**",
+                 "--exclude", "System Volume Information/**"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
             )
             
