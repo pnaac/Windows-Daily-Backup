@@ -3,7 +3,7 @@
     "client_name": "Kriplani Builders",
     "schedule_time": "21:00",
     "source_path": "D:\\TallyData",
-    "remote_folder": "Kriplani_Backups",
+    "remote_folder": "kriplani-backups",
     "shutdown_after_backup": false,
     "email_recipients": "admin@kriplani.com",
     "retention_policy": {

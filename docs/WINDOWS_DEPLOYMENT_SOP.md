@@ -91,3 +91,28 @@ If an old version represents a different architecture (e.g., Python script vs Ex
 - **"Python not found"**: On the build machine, ensure you checked "Add Python to PATH" during installation.
 - **"Access Denied"**: You MUST right-click the `.bat` files and choose "Run as Administrator". Double-clicking is often not enough on Servers.
 - **"Missing serviceAccountKey.json"**: The agent will exit immediately if this file is missing. Check `agent.log`.
+
+---
+
+## 🔄 Phase 3: Updating Implementation (Code Changes Only)
+
+If you have modified the Python code (`agent.py` or handlers) but do not need a full re-install:
+
+### 1. Rebuild the Executable
+On your specific Build Machine (Development PC):
+```powershell
+python agent/build_agent.py
+```
+This generates a new `KriplaniBackupAgent_Installer.exe` or `KriplaniBackupAgent.exe` in the `dist` folder.
+
+### 2. Update the Server
+On the Client Server (`TallyServer`):
+1.  **Stop the Service**:
+    *   Open Task Manager.
+    *   Find `KriplaniBackupAgent.exe` -> Right Click -> End Task.
+2.  **Replace Files**:
+    *   Copy the **NEW** `.exe` from your build folder to `C:\KriplaniBackup\` (or wherever installed).
+    *   *Critical*: Also update `data_structure.json` if configuration changed.
+3.  **Restart**:
+    *   The Scheduled Task runs on boot or daily. To start it *now*:
+    *   Open Task Scheduler -> Find "KriplaniBackupAgent" -> Right Click -> Run.

@@ -104,10 +104,18 @@ class RcloneHandler(BaseHandler):
             print(f"⚠️ Retention Error: {e}")
 
     def _resolve_remote_path(self, remote_folder):
-        # Handle Remote Configuration
+        # 1. Detect GCS Bucket (contains hyphens/dots, strictly lowercase usually)
+        if "-" in remote_folder or "." in remote_folder or "kriplani" in remote_folder:
+             print(f"☁️ Detected GCS Bucket: {remote_folder}")
+             return f"gcs:{remote_folder}", ""
+
+        # 2. Detect Google Drive Folder ID (Long alphanumeric, no spaces)
+        # Note: GDrive IDs are usually mixed case, GCS is lowercase.
         if len(remote_folder) > 15 and "/" not in remote_folder and " " not in remote_folder:
             print(f"🔗 Detected Folder ID: {remote_folder}")
             return f"gdrive,root_folder_id={remote_folder}:", ""
+            
+        # 3. Default to GDrive Path
         return "gdrive:", remote_folder
 
     # --- EXECUTE ---
@@ -147,7 +155,8 @@ class RcloneHandler(BaseHandler):
             # 1. Sync
             process = subprocess.Popen(
                 [self.RCLONE_BIN, "sync", source_path, f"{base_remote}{mirror_path}",
-                 "--transfers", "8", "--use-json-log", "--stats", "1s"],
+                 "--transfers", "8", "--use-json-log", "--stats", "1s", 
+                 "--retries", "5", "--retries-sleep", "30s"],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
             

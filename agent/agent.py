@@ -225,16 +225,28 @@ def register_agent():
 def configure_rclone():
     try:
         result = subprocess.run([RCLONE_BIN, "listremotes"], capture_output=True, text=True)
-        if "gdrive:" in result.stdout:
-            return
+        existing_remotes = result.stdout
 
-        log.info("⚙️ Configuring 'gdrive' remote with Service Account...")
-        subprocess.run([
-            RCLONE_BIN, "config", "create", "gdrive", "drive", 
-            "scope", "drive", 
-            "service_account_file", KEY_PATH
-        ], check=True)
-        log.info("✅ Rclone remote 'gdrive' created.")
+        # 1. Config Google Drive (Legacy/Fallback)
+        if "gdrive:" not in existing_remotes:
+            log.info("⚙️ Configuring 'gdrive' remote...")
+            subprocess.run([
+                RCLONE_BIN, "config", "create", "gdrive", "drive", 
+                "scope", "drive", 
+                "service_account_file", KEY_PATH
+            ], check=True)
+
+        # 2. Config Google Cloud Storage (New)
+        if "gcs:" not in existing_remotes:
+            log.info("⚙️ Configuring 'gcs' remote for Google Cloud Storage...")
+            # We use 'google cloud storage' provider. 
+            # object_acl/bucket_acl defaults are usually fine, but we can rely on IAM (Uniform Access).
+            subprocess.run([
+                RCLONE_BIN, "config", "create", "gcs", "google cloud storage", 
+                "service_account_file", KEY_PATH
+            ], check=True)
+            log.info("✅ Rclone remote 'gcs' created.")
+            
     except Exception as e:
         log.error(f"⚠️ Failed to configure rclone: {e}")
 
