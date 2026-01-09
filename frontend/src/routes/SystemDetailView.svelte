@@ -230,6 +230,15 @@
       })
       .slice(0, 10); // Show last 10
   }
+
+  function getDestinationUrl(remoteFolder) {
+    if (!remoteFolder) return null;
+    // Check for GCS Bucket pattern (contains hyphens, 'kriplani', or is not just a simple word/ID)
+    if (remoteFolder.includes("kriplani") || remoteFolder.includes("-")) {
+      return `https://console.cloud.google.com/storage/browser/${remoteFolder}`;
+    }
+    return null;
+  }
 </script>
 
 <div class="max-w-7xl mx-auto px-4">
@@ -504,9 +513,35 @@
               {state.last_size || "-"}
             </div>
 
-            <div>Source:</div>
             <div class="font-mono truncate" title={job.source_path}>
               {job.source_path}
+            </div>
+
+            <div>Destination:</div>
+            <div class="font-mono truncate" title={job.remote_folder}>
+              {#if getDestinationUrl(job.remote_folder)}
+                <a
+                  href={getDestinationUrl(job.remote_folder)}
+                  target="_blank"
+                  class="link link-primary flex items-center gap-1"
+                >
+                  {job.remote_folder}
+                  <svg
+                    class="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    ><path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    ></path></svg
+                  >
+                </a>
+              {:else}
+                {job.remote_folder || "Default"}
+              {/if}
             </div>
           </div>
 
@@ -662,8 +697,32 @@
               >
               <td
                 class="text-xs font-mono text-base-content/60 max-w-[100px] truncate"
-                title={job.remote_folder}>{job.remote_folder || "Default"}</td
+                title={job.remote_folder}
               >
+                {#if getDestinationUrl(job.remote_folder)}
+                  <a
+                    href={getDestinationUrl(job.remote_folder)}
+                    target="_blank"
+                    class="link link-primary inline-flex items-center gap-1 hover:text-primary-focus transition-colors"
+                  >
+                    {job.remote_folder}
+                    <svg
+                      class="w-3 h-3 opacity-50"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      ><path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      ></path></svg
+                    >
+                  </a>
+                {:else}
+                  {job.remote_folder || "Default"}
+                {/if}
+              </td>
               <td class="font-mono text-sm font-bold text-base-content/70">
                 {state.last_size || "-"}
               </td>
