@@ -356,10 +356,10 @@
             target="_blank"
             class="flex items-center gap-3 px-4 py-3 mx-2 rounded-lg text-base-content/70 hover:bg-base-200
                {isSidebarCollapsed ? 'justify-center px-2' : ''}"
-            title="GCS Bucket"
+            title="Backups"
           >
             <span class="w-5 h-5">{@html Icons.database}</span>
-            {#if !isSidebarCollapsed}<span>GCS Bucket</span>{/if}
+            {#if !isSidebarCollapsed}<span>Backups</span>{/if}
           </a>
         </li>
 
