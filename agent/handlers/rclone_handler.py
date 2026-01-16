@@ -164,15 +164,22 @@ class RcloneHandler(BaseHandler):
 
         bytes_transferred = 0
         try:
+            # Import ACTIVE_PROCESSES from agent module for cancel support
+            from agent import ACTIVE_PROCESSES
+            
             # 1. Sync
             process = subprocess.Popen(
                 [self.RCLONE_BIN, "sync", source_path, f"{base_remote}{mirror_path}",
                  "--transfers", "8", "--use-json-log", "--stats", "1s", 
                  "--retries", "5", "--retries-sleep", "30s",
+                 "--bwlimit", "25M",
                  "--exclude", "$RECYCLE.BIN/**",
                  "--exclude", "System Volume Information/**"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
             )
+            
+            # Register process for potential cancellation
+            ACTIVE_PROCESSES[job_id] = process
             
             last_error_lines = []
             while True:

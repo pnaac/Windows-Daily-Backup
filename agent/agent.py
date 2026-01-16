@@ -32,6 +32,7 @@ RCLONE_EXE_NAME = "rclone.exe" if platform.system() == "Windows" else "rclone"
 RCLONE_BIN = RCLONE_EXE_NAME # Default to PATH, updated by ensure_rclone
 KEY_PATH = "serviceAccountKey.json"
 ACTIVE_JOBS = {} # Track running threads: {job_id: thread_obj}
+ACTIVE_PROCESSES = {} # Track running subprocesses: {job_id: process_obj} for cancellation
 
 # 2. Identity Persistence & Logging
 if platform.system() == "Windows":
@@ -437,6 +438,35 @@ def _process_manual_triggers(jobs, global_config, handlers):
             log.info(f"⚡ Manual Trigger received for {manual_trigger_job_id}")
             handle_job(manual_trigger_job_id, jobs[manual_trigger_job_id], global_config, handlers, trigger_source='manual')
 
+def _process_cancel_requests():
+    """Check for cancel requests and terminate running jobs."""
+    cancel_job_id = db.reference(f'control/{AGENT_ID}/cancel_job').get()
+    if cancel_job_id:
+        db.reference(f'control/{AGENT_ID}/cancel_job').delete()
+        log.info(f"🛑 Cancel request received for {cancel_job_id}")
+        
+        # Kill the subprocess if it exists
+        if cancel_job_id in ACTIVE_PROCESSES:
+            try:
+                process = ACTIVE_PROCESSES[cancel_job_id]
+                process.terminate()
+                process.wait(timeout=5)
+                log.info(f"✅ Process for {cancel_job_id} terminated.")
+            except Exception as e:
+                log.error(f"⚠️ Failed to terminate process: {e}")
+                # Force kill if terminate doesn't work
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+            finally:
+                if cancel_job_id in ACTIVE_PROCESSES:
+                    del ACTIVE_PROCESSES[cancel_job_id]
+        
+        # Update job status
+        state_ref = db.reference(f'runtime_state/{AGENT_ID}/job_states/{cancel_job_id}')
+        state_ref.update({"status": "Cancelled", "detailed_message": "Job cancelled by user."})
+
 def _process_scheduled_checks(jobs, job_states, global_config, handlers, agent_start_time, last_processed_minute, startup_delay=60):
     if (datetime.datetime.now() - agent_start_time).total_seconds() < startup_delay:
         return last_processed_minute
@@ -475,6 +505,7 @@ def run_agent_loop(handlers):
             job_states = db.reference(f'runtime_state/{AGENT_ID}/job_states').get() or {}
 
             # 4. Process Logic
+            _process_cancel_requests()
             _process_manual_triggers(jobs, global_config, handlers)
             last_processed_minute = _process_scheduled_checks(
                 jobs, job_states, global_config, handlers, 

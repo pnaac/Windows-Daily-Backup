@@ -116,6 +116,23 @@
     });
   }
 
+  function cancelJob(jobId) {
+    openConfirmModal({
+      title: "Cancel Running Job?",
+      message: `Are you sure you want to cancel "${jobs[jobId].name}"? This will terminate the backup process immediately.`,
+      isDanger: true,
+      onConfirm: () => {
+        update(ref(db, `control/${systemId}`), { cancel_job: jobId });
+        logAuditAction(
+          currentUser?.email,
+          "CANCEL_JOB",
+          systemId,
+          `Cancelled running job "${jobs[jobId].name}"`
+        );
+      },
+    });
+  }
+
   $: kpiLastActive = Object.values(jobStates).reduce((latest, state) => {
     if (!state.last_run) return latest;
     return state.last_run > latest ? state.last_run : latest;
@@ -552,8 +569,16 @@
               on:click={() => triggerJob(jobId)}
               disabled={state.status === "Running"}
             >
-              Build
+              Run
             </button>
+            {#if state.status === "Running"}
+              <button
+                class="btn btn-sm btn-error flex-1 text-white"
+                on:click={() => cancelJob(jobId)}
+              >
+                Cancel
+              </button>
+            {/if}
 
             <button
               class="btn btn-sm btn-ghost border border-base-200"
@@ -777,6 +802,26 @@
                   >
                     {@html Icons.power}
                   </button>
+                  {#if state.status === "Running"}
+                    <button
+                      class="btn btn-sm btn-error join-item tooltip"
+                      data-tip="Cancel Job"
+                      on:click={() => cancelJob(jobId)}
+                    >
+                      <svg
+                        class="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        ><path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        /></svg
+                      >
+                    </button>
+                  {/if}
                   <button
                     class="btn btn-sm btn-ghost join-item tooltip"
                     data-tip="Edit"
